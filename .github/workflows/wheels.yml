@@ -17,6 +17,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
+        fetch-depth: 0
         submodules: true
 
     - name: Build SDist
@@ -41,6 +42,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
+        fetch-depth: 0
         submodules: true
 
     - uses: pypa/cibuildwheel@v2.13.0
@@ -50,6 +52,8 @@ jobs:
 
         # Temporary: use pre-release Python 3.12 for stable ABI builds
         CIBW_PRERELEASE_PYTHONS: True
+
+        MACOSX_DEPLOYMENT_TARGET: "10.14"
 
     - name: Verify clean directory
       run: git diff --exit-code
