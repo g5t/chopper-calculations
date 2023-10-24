@@ -1,0 +1,1 @@
+nanobind_add_module(chopcal chopcal.cpp choppers.cpp)
