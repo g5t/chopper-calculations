@@ -12,7 +12,7 @@ authors = [
     { name = "Gregory Tucker", email = "gregory.tucker@ess.eu" },
 ]
 classifiers = [
-    "License :: BSD",
+    "License :: OSI Approved :: BSD License",
 ]
 dynamic = ["version"]
 
