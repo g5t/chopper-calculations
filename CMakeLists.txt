@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.26)
 project(chopper-calculations)
 
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 17)
 
 # Warn if the user invokes CMake directly
 if (NOT SKBUILD)
