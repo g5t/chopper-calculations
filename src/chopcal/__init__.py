@@ -7,3 +7,5 @@ except PackageNotFoundError:
     pass
 
 from ._chopcal_impl import bifrost
+
+__all__ = ["bifrost"]
