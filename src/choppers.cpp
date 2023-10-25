@@ -95,7 +95,7 @@ auto bifrost(double E_0, double L_0, double chopPulseOpening) -> std::map<std::s
     choppers["fo1phase"] = chopFrameOverlap1PhaseOffset;
     choppers["fo2phase"] = chopFrameOverlap2PhaseOffset;
     choppers["bw1phase"] = chopBWPhaseOffset;
-    choppers["bw2phase"] = -chopBWPhaseOffset;
+    choppers["bw2phase"] = chopBWPhaseOffset;
     choppers["ps1delay"] = chopPulseOffset;
     choppers["ps2delay"] = chopPulseOffset;
     choppers["fo1delay"] = chopFrameOverlap1Offset;
