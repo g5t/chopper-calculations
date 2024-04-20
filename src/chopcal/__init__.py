@@ -6,6 +6,10 @@ except PackageNotFoundError:
     # package is not installed
     pass
 
-from ._chopcal_impl import bifrost
+from chopcal._chopcal_impl import bifrost
+import chopcal._chopper_lib_impl as mcstas
 
-__all__ = ["bifrost"]
+__all__ = [
+    "bifrost",
+    "mcstas"
+]
