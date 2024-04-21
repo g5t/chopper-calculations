@@ -2,6 +2,7 @@
 
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/vector.h>
+#include <nanobind/stl/tuple.h>
 
 extern "C" {
 #include <chopper-lib.h>
