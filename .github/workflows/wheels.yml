@@ -26,7 +26,7 @@ jobs:
     - name: Check metadata
       run: pipx run twine check dist/*
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         path: dist/*.tar.gz
 
@@ -45,13 +45,13 @@ jobs:
         fetch-depth: 0
         submodules: true
 
-    - uses: pypa/cibuildwheel@v2.13.0
+    - uses: pypa/cibuildwheel@v2.17.0
       env:
         # Cross-compile on macOS
         CIBW_ARCHS_MACOS: x86_64 arm64
 
         # Temporary: use pre-release Python 3.12 for stable ABI builds
-        CIBW_PRERELEASE_PYTHONS: True
+        # CIBW_PRERELEASE_PYTHONS: True
 
         MACOSX_DEPLOYMENT_TARGET: "10.14"
 
@@ -60,7 +60,7 @@ jobs:
       shell: bash
 
     - name: Upload wheels
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         path: wheelhouse/*.whl
 
@@ -77,9 +77,9 @@ jobs:
     if: github.event_name == 'release' && github.event.action == 'published'
 
     steps:
-    - uses: actions/setup-python@v4
+    - uses: actions/setup-python@v5
 
-    - uses: actions/download-artifact@v3
+    - uses: actions/download-artifact@v4
       with:
         name: artifact
         path: dist
