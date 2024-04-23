@@ -18,11 +18,6 @@ nb::class_<chopper_parameters>(m, "Chopper")
       .def_rw("phase", &chopper_parameters::phase, "Disk rotation phase in degrees")
       .def_rw("angle", &chopper_parameters::angle, "Disk opening angle in degrees")
       .def_rw("distance", &chopper_parameters::path, "Source to disk path length distance in meters")
-      .def("__str__", [](const chopper_parameters * c) {
-            std::stringstream s;
-            s << "Chopper(" << c->speed << " Hz, " << c->phase << " deg, " << c->angle << " deg, " << c->path << " m)";
-            return s.str();
-      })
       ;
 
 m.def("inverse_velocity_windows",

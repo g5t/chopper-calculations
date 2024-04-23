@@ -7,9 +7,9 @@ except PackageNotFoundError:
     pass
 
 from chopcal._chopcal_impl import bifrost
-import chopcal._chopper_lib_impl as mcstas
+import chopcal.lib as lib
 
 __all__ = [
     "bifrost",
-    "mcstas"
+    "lib"
 ]
