@@ -6,14 +6,14 @@ Exposes chopper calculations to Python which were otherwise hidden in McStas ins
 
 ## Supported components
 
-| source          | name                                                      | component                              | type      |
-|-----------------|-----------------------------------------------------------|----------------------------------------|-----------|
-| Instr           | BIFROST                                                   | `chopcal.bifrost`                      | function  |
-| runtime library | [chopper-lib](https://github.com/g5t/mcstas-chopper-lib/) | `chopcal.lib`                          | submodule |
-|                 | chopper parameters                                        | `chopper.lib.Chopper`                  | class     |
-|                 | transmitted inverse-velocity phase space                  | `chopper.lib.inverse_velocity_windows` | function  |
-|                 | transmitted inverse-velocity extremea                     | `chopper.lib.inverse_velocity_limits`  | function  |
-|                 | transmitted wavelength extremea                           | `chopper.lib.wavelength_limits`        | function  |
+| source          | name                                                            | component                                 | type      |
+|-----------------|-----------------------------------------------------------------|-------------------------------------------|-----------|
+| Instr           | BIFROST                                                         | `chopcal.bifrost`                         | function  |
+| runtime library | [chopper-lib](https://github.com/mcdotstar/mcstas-chopper-lib/) | `chopcal.mcstas`                          | submodule |
+|                 | chopper parameters                                              | `chopper.mcstas.Chopper`                  | class     |
+|                 | transmitted inverse-velocity phase space                        | `chopper.mcstas.inverse_velocity_windows` | function  |
+|                 | transmitted inverse-velocity extremea                           | `chopper.mcstas.inverse_velocity_limits`  | function  |
+|                 | transmitted wavelength extremea                                 | `chopper.mcstas.wavelength_limits`        | function  |
 
 
 
