@@ -42,7 +42,7 @@ build-verbosity = 1
 
 # Run pytest as part of the build
 test-command = "pytest {project}/test"
-test-requires = ["pytest", "scipp", "scipy", "numpy"]
+test-requires = ["pytest", "numpy"]
 # skip testint on PyPy, musllinux and 32-bit for now to avoid trying to build scipy & scipp
 test-skip = ["pp*", "*-musllinux*", "*-win32", "*-manylinux_i686"]
 
