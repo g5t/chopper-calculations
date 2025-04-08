@@ -19,6 +19,9 @@ dynamic = ["version"]
 [project.urls]
 Homepage = "https://github.com/g5t/chopper-calculations"
 
+[project.optional-dependencies]
+test = ["pytest", "scipp", "scipy", "numpy"]
+
 [tool.setuptools_scm]
 
 
@@ -41,7 +44,7 @@ build-verbosity = 1
 
 # Run pytest as part of the build
 test-command = "pytest {project}/test"
-test-requires = "pytest scipp scipy numpy"
+test-extras = ["test"]
 
 # Need for full C++17 support on MacOS
 [tool.cibuildwheel.macos.environment]
