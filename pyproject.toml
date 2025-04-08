@@ -41,7 +41,7 @@ build-verbosity = 1
 
 # Run pytest as part of the build
 test-command = "pytest {project}/test"
-test-requires = "pytest"
+test-requires = "pytest scipp scipy numpy"
 
 # Need for full C++17 support on MacOS
 [tool.cibuildwheel.macos.environment]
