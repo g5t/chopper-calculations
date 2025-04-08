@@ -45,8 +45,8 @@ build-verbosity = 1
 # Run pytest as part of the build
 test-command = "pytest {project}/test"
 test-extras = ["test"]
-# skip PyPy for now to avoid trying to build scipy & scipp
-skip = ["pp*", "*-manylinux*"]
+# skip PyPy, musllinux and 32-bit for now to avoid trying to build scipy & scipp
+skip = ["pp*", "*-musllinux*", "*-win32", "*-manylinux_i686"]
 
 # Need for full C++17 support on MacOS
 [tool.cibuildwheel.macos.environment]
