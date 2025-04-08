@@ -36,5 +36,5 @@ jobs:
 
     - name: Test
       run: |
-        python -m pip install pytest scipp scipy
+        python -m pip install pytest numpy
         python -m pytest
