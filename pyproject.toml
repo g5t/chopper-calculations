@@ -7,7 +7,7 @@ build-backend = "scikit_build_core.build"
 name = "chopcal"
 description = "Provides the results of chopper calculations from McStas instruments"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 authors = [
     { name = "Gregory Tucker", email = "gregory.tucker@ess.eu" },
 ]
@@ -18,6 +18,7 @@ dynamic = ["version"]
 
 [project.urls]
 Homepage = "https://github.com/g5t/chopper-calculations"
+
 
 [tool.setuptools_scm]
 
@@ -41,7 +42,9 @@ build-verbosity = 1
 
 # Run pytest as part of the build
 test-command = "pytest {project}/test"
-test-requires = "pytest"
+test-requires = ["pytest", "numpy"]
+# skip testint on PyPy, musllinux and 32-bit for now to avoid trying to build scipy & scipp
+test-skip = ["pp*", "*-musllinux*", "*-win32", "*-manylinux_i686"]
 
 # Need for full C++17 support on MacOS
 [tool.cibuildwheel.macos.environment]

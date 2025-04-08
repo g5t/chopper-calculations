@@ -3,9 +3,22 @@
 //
 #include <cmath>
 #include <cstdio>
+#include <vector>
+#include <chopper-lib.h>
 #include "choppers.h"
 
-auto bifrost(double E_0, double L_0, double chopPulseOpening) -> std::map<std::string, double>
+struct parameters {
+  double path;
+  double angle;
+  double speed;
+  double phase;
+  double delay;
+};
+
+auto bifrost(double E_0, double L_0, double chopPulseOpening)
+-> std::map<std::string, chopper_parameters>
+//-> std::map<std::string, std::map<std::string, double>>
+//std::map<std::string, double>
 {
 // Transferred parameters
     double chopPulseFrequencyOrder=14; // Number of chopper pulses pr moderator pulse. It will automatically be reduced when nesesary and a warning will be written in the promt.
@@ -75,32 +88,42 @@ auto bifrost(double E_0, double L_0, double chopPulseOpening) -> std::map<std::s
     auto chopBWOffset=(chopBW_t0+chopBW_t1)/2.0;
     auto chopBWPhaseOffset=  (chopBWOffset)*14.0*360.0;
 
-    auto ps1 = std::make_pair(chopPulseFrequencyOrder * 14.0, chopPulsePhaseOffset);
-    auto ps2 = std::make_pair(chopPulseFrequencyOrder * 14.0, chopPulse2PhaseOffset);
-    auto fo1 = std::make_pair(14.0, chopFrameOverlap1PhaseOffset);
-    auto fo2 = std::make_pair(14.0, chopFrameOverlap2PhaseOffset);
-    // For some reason the instrument uses the delay time rather than the phase offset for the Bandwidth choppers
-    auto bw1 = std::make_pair(14.0, chopBWPhaseOffset);
-    auto bw2 = std::make_pair(-14.0, -chopBWPhaseOffset);
+//    auto ps1 = std::make_pair(chopPulseFrequencyOrder * 14.0, chopPulsePhaseOffset);
+//    auto ps2 = std::make_pair(chopPulseFrequencyOrder * 14.0, chopPulse2PhaseOffset);
+//    auto fo1 = std::make_pair(14.0, chopFrameOverlap1PhaseOffset);
+//    auto fo2 = std::make_pair(14.0, chopFrameOverlap2PhaseOffset);
+//    // For some reason the instrument uses the delay time rather than the phase offset for the Bandwidth choppers
+//    auto bw1 = std::make_pair(14.0, chopBWPhaseOffset);
+//    auto bw2 = std::make_pair(-14.0, -chopBWPhaseOffset);
 
-    std::map<std::string, double> choppers;
-    choppers["ps1speed"] = chopPulseFrequencyOrder * 14.0;
-    choppers["ps2speed"] = chopPulseFrequencyOrder * 14.0;
-    choppers["fo1speed"] = 14.0;
-    choppers["fo2speed"] = 14.0;
-    choppers["bw1speed"] = 14.0;
-    choppers["bw2speed"] = -14.0;
-    choppers["ps1phase"] = chopPulsePhaseOffset;
-    choppers["ps2phase"] = chopPulse2PhaseOffset;
-    choppers["fo1phase"] = chopFrameOverlap1PhaseOffset;
-    choppers["fo2phase"] = chopFrameOverlap2PhaseOffset;
-    choppers["bw1phase"] = chopBWPhaseOffset;
-    choppers["bw2phase"] = chopBWPhaseOffset;
-    choppers["ps1delay"] = chopPulseOffset;
-    choppers["ps2delay"] = chopPulseOffset;
-    choppers["fo1delay"] = chopFrameOverlap1Offset;
-    choppers["fo2delay"] = chopFrameOverlap2Offset;
-    choppers["bw1delay"] = chopBW_t0;
-    choppers["bw2delay"] = chopBW_t1;
-    return choppers;
+    std::map<std::string, chopper_parameters> cpm;
+    cpm["ps1"] = {.speed=chopPulseFrequencyOrder * 14.0, .phase=chopPulsePhaseOffset, .angle=170.0, .path=chopPulseDist};//, .delay=chopPulseOffset};
+    cpm["ps2"] = {.speed=chopPulseFrequencyOrder * 14.0, .phase=chopPulse2PhaseOffset, .angle=170.0, .path=chopPulseDist + 0.02}; //, .delay=chopPulseOffset};
+    cpm["fo1"] = {.speed=14.0, .phase=chopFrameOverlap1PhaseOffset, .angle=38.26, .path=chopFrameOverlap1Pos}; // , .delay=chopFrameOverlap1Offset};
+    cpm["fo2"] = {.speed=14.0, .phase=chopFrameOverlap2PhaseOffset, .angle=52.01, .path=chopFrameOverlap2Pos}; // .delay=chopFrameOverlap2Offset};
+    cpm["bw1"] = {.speed=14.0, .phase=chopBWPhaseOffset, .angle=161.0, .path=chopBWPos}; // .delay=chopBWOffset};
+    cpm["bw2"] = {.speed=-14.0, .phase=chopBWPhaseOffset, .angle=161.0, .path=chopBWPos + 0.02}; // .delay=chopBWOffset};
+
+    return cpm;
+
+//    std::map<std::string, double> choppers;
+//    choppers["ps1speed"] = chopPulseFrequencyOrder * 14.0;
+//    choppers["ps2speed"] = chopPulseFrequencyOrder * 14.0;
+//    choppers["fo1speed"] = 14.0;
+//    choppers["fo2speed"] = 14.0;
+//    choppers["bw1speed"] = 14.0;
+//    choppers["bw2speed"] = -14.0;
+//    choppers["ps1phase"] = chopPulsePhaseOffset;
+//    choppers["ps2phase"] = chopPulse2PhaseOffset;
+//    choppers["fo1phase"] = chopFrameOverlap1PhaseOffset;
+//    choppers["fo2phase"] = chopFrameOverlap2PhaseOffset;
+//    choppers["bw1phase"] = chopBWPhaseOffset;
+//    choppers["bw2phase"] = chopBWPhaseOffset;
+//    choppers["ps1delay"] = chopPulseOffset;
+//    choppers["ps2delay"] = chopPulseOffset;
+//    choppers["fo1delay"] = chopFrameOverlap1Offset;
+//    choppers["fo2delay"] = chopFrameOverlap2Offset;
+//    choppers["bw1delay"] = chopBW_t0;
+//    choppers["bw2delay"] = chopBW_t1;
+//    return choppers;
 }

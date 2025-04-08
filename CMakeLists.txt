@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.26)
 project(chopper-calculations)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_LIST_DIR}/cmake")
 
 # Warn if the user invokes CMake directly
@@ -41,7 +41,7 @@ if (NOT SKBUILD)
 endif()
 
 include(fetcher)
-git_fetch(chopper_lib main https://github.com/g5t/mcstas-chopper-lib.git False)
+git_fetch(chopper_lib main https://github.com/mcdotstar/mcstas-chopper-lib.git False)
 
 # Import nanobind through CMake's find_package mechanism
 find_package(nanobind CONFIG REQUIRED)
@@ -58,7 +58,9 @@ nanobind_add_module(
         # Source code goes here
         src/chopcal.cpp
         src/choppers.cpp
+        ${chopper_lib_SOURCE_DIR}/chopper-lib.c
 )
+target_include_directories(_chopcal_impl PRIVATE ${chopper_lib_SOURCE_DIR})
 
 nanobind_add_module(_chopper_lib_impl
         STABLE_ABI
