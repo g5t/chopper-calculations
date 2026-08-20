@@ -49,18 +49,45 @@ jobs:
         fetch-depth: 0
         submodules: true
 
-    # A pull request builds one wheel per OS. That is enough to prove the packaging
-    # path still works -- scikit-build-core, the stable ABI tag, the test command --
-    # while pip.yml covers correctness across Python versions on the host. Pushes to
-    # main, releases, and any PR labelled 'full-ci' build the whole matrix.
+    # A pull request that cannot affect how the wheel compiles builds one wheel per OS:
+    # enough to prove the packaging path -- scikit-build-core, the stable ABI tag, the
+    # test command -- while pip.yml covers correctness across Python versions. Anything
+    # that touches the compiled sources or the build configuration gets the whole matrix,
+    # because that is the only place targets like musllinux are exercised at all.
+    - name: Decide how much to build
+      id: matrix
+      shell: bash
+      run: |
+        if [ "${{ github.event_name }}" != "pull_request" ]; then
+          echo "everything: not a pull request"
+          echo "full=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        if [ "${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}" = "true" ]; then
+          echo "everything: labelled full-ci"
+          echo "full=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        # Three dots: what this branch changed, not what main did meanwhile.
+        changed="$RUNNER_TEMP/changed.txt"
+        git diff --name-only "${{ github.event.pull_request.base.sha }}...HEAD" > "$changed"
+        echo "changed:"; sed 's/^/  /' "$changed"
+        if grep -qE '\.(c|h|cc|cpp|cxx|hh|hpp)$|(^|/)CMakeLists\.txt$|(^|/)pyproject\.toml$|(^|/)wheels\.yml$' "$changed"; then
+          echo "everything: a compiled source or the build configuration changed"
+          echo "full=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "one wheel per OS: nothing here changes how the wheel compiles"
+          echo "full=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - uses: pypa/cibuildwheel@v2.17.0
       env:
-        CIBW_BUILD: ${{ (github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'full-ci')) && 'cp312-*' || '*' }}
-        CIBW_SKIP: ${{ (github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'full-ci')) && '*-musllinux*' || '' }}
+        CIBW_BUILD: ${{ steps.matrix.outputs.full == 'true' && '*' || 'cp312-*' }}
+        CIBW_SKIP: ${{ steps.matrix.outputs.full == 'true' && '' || '*-musllinux*' }}
 
         # Cross-compile on macOS, except for the smoke build where the runner's own
         # architecture is the one that can actually run the tests
-        CIBW_ARCHS_MACOS: ${{ (github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'full-ci')) && 'arm64' || 'x86_64 arm64' }}
+        CIBW_ARCHS_MACOS: ${{ steps.matrix.outputs.full == 'true' && 'x86_64 arm64' || 'arm64' }}
 
         # Temporary: use pre-release Python 3.12 for stable ABI builds
         # CIBW_PRERELEASE_PYTHONS: True
