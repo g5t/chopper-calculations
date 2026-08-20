@@ -14,30 +14,34 @@ def get_factors():
     return h_over_m, h2_over_2m
 
 
+def steps(start, stop, step):
+    """The points numpy.arange would give, without needing numpy to give them."""
+    from math import ceil
+    return [start + i * step for i in range(max(0, ceil((stop - start) / step)))]
+
+
 def do_test_choplib():
     import chopcal as cc
-    from numpy import arange, array, hstack
-    lambdas = hstack((arange(0.5, 1.75, step=0.05), arange(1.76, 1.9, step=0.001), arange(2., 5, step=0.1)))
+    lambdas = (steps(0.5, 1.75, 0.05) + steps(1.76, 1.9, 0.001) + steps(2., 5, 0.1))
     settings = [cc.bifrost(0., x) for x in lambdas]
     calc = [cc.lib.wavelength_limits(list(setting.values())) for setting in settings]
 
     assert all(c[0] == 1 for c in calc)
-    minimum = array([c[1][0] for c in calc])
-    maximum = array([c[1][1] for c in calc])
+    minimum = [c[1][0] for c in calc]
+    maximum = [c[1][1] for c in calc]
 
-    assert all(x < 0.025 for x in lambdas - maximum)
+    assert all(x - y < 0.025 for x, y in zip(lambdas, maximum))
 
     h_m, h2_2m = get_factors()
     active_length = 162 - (4.41 + 0.032 + 2.0 - 0.1)
     maximum_bandwidth = 1 / active_length / 14.0 * h_m   # ~= 1.815 -- why isn't this 1.77?
     expected_bandwidth = 1.77  # why isn't this 1.815??
 
-    difference = maximum - minimum
-    over = difference[lambdas > maximum_bandwidth]
+    difference = [x - y for x, y in zip(maximum, minimum)]
+    over = [d for d, l in zip(difference, lambdas) if l > maximum_bandwidth]
     assert all(abs(x - expected_bandwidth) < 0.01 for x in over)
-    under = difference[lambdas < maximum_bandwidth]
-    lunder = lambdas[lambdas < maximum_bandwidth]
-    assert all(abs(x - y + maximum_bandwidth - expected_bandwidth) < 0.05 for x, y in zip(under, lunder))
+    under = [(d, l) for d, l in zip(difference, lambdas) if l < maximum_bandwidth]
+    assert all(abs(x - y + maximum_bandwidth - expected_bandwidth) < 0.05 for x, y in under)
 
     return lambdas, minimum, maximum, expected_bandwidth
 
@@ -54,8 +58,8 @@ if __name__ == '__main__':
     plt.plot(lambdas, minimum, label='minimum')
     plt.plot(lambdas, maximum, label='maximum')
     plt.plot(lambdas, lambdas, label='target')
-    plt.plot(lambdas, maximum - minimum, label='bandwidth')
-    plt.plot(lambdas, expected_bandwidth + 0 * lambdas, label='expected bandwidth')
-    plt.setp(plt.gca(), 'xlabel', r'set $\lambda/\mathrm{\AA}$', 'ylabel', r'$\lambda/\mathrm{\AA}$') 
+    plt.plot(lambdas, [x - y for x, y in zip(maximum, minimum)], label='bandwidth')
+    plt.plot(lambdas, [expected_bandwidth] * len(lambdas), label='expected bandwidth')
+    plt.setp(plt.gca(), 'xlabel', r'set $\lambda/\mathrm{\AA}$', 'ylabel', r'$\lambda/\mathrm{\AA}$')
     plt.legend()
     plt.show()

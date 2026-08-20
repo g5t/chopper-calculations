@@ -42,7 +42,9 @@ build-verbosity = 1
 
 # Run pytest as part of the build
 test-command = "pytest {project}/test"
-test-requires = ["pytest", "numpy"]
+# Only pytest: numpy stopped publishing manylinux_2_17 wheels at 2.3, so asking for it
+# inside the manylinux2014 image sends pip to the sdist and a compiler too old to build it
+test-requires = ["pytest"]
 # skip testint on PyPy, musllinux and 32-bit for now to avoid trying to build scipy & scipp
 test-skip = ["pp*", "*-musllinux*", "*-win32", "*-manylinux_i686"]
 
