@@ -1,6 +1,9 @@
 //
 // Every number these calculations depend on, in one place, with its provenance.
 //
+// Nothing here needs more than C++17 -- inline variables -- and no library header, so it
+// compiles wherever the extension does.
+//
 // The chopper calculations used to write the same physical constant several ways -- the
 // neutron h^2/2m appeared as 81.82 in one line and as 0.1106 (its inverse square root) in
 // the next, and 0.1106 * sqrt(81.82) is 1.000426, not 1. Asking for a 3 angstrom band
@@ -9,8 +12,6 @@
 //
 #ifndef CHOPCAL_CONSTANTS_H
 #define CHOPCAL_CONSTANTS_H
-
-#include <numbers>
 
 namespace chopcal::constants {
 
@@ -24,7 +25,11 @@ inline constexpr double ELEMENTARY_CHARGE = 1.602176634e-19;
 /// Neutron rest mass, kg. CODATA 2022.
 inline constexpr double NEUTRON_MASS = 1.67492750056e-27;
 
-inline constexpr double PI = std::numbers::pi_v<double>;
+/// Pi. Spelled out rather than taken from <numbers>: that is a C++20 *library* header,
+/// and the musllinux images cibuildwheel targets ship a libstdc++ without it, even
+/// though the compiler accepts C++20 language features. More digits than a double holds,
+/// so this is bit-identical to std::numbers::pi_v<double>.
+inline constexpr double PI = 3.14159265358979323846;
 
 // -- derived, in the units the chopper calculations work in ------------------
 // Each is the SI expression scaled once into angstrom/meV, so the value and the way it
