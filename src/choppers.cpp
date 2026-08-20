@@ -7,13 +7,11 @@
 #include <chopper-lib.h>
 #include "choppers.h"
 
-struct parameters {
-  double path;
-  double angle;
-  double speed;
-  double phase;
-  double delay;
-};
+// The chopper structure is a run of doubles, so a library that means something else by
+// its second field would accept these settings and quietly answer a different question.
+#if !defined(CHOPPER_LIB_VERSION) || CHOPPER_LIB_VERSION < 20000
+#error "chopcal sets chopper delays in seconds; chopper-lib 2.0.0 or newer is required"
+#endif
 
 auto bifrost(double E_0, double L_0, double chopPulseOpening)
 -> std::map<std::string, chopper_parameters>
@@ -57,25 +55,35 @@ auto bifrost(double E_0, double L_0, double chopPulseOpening)
     auto v_1=3956.0/lambda_0;
 
 /***********  Pulse shaping chopper calculations **********/
+    auto chopPulseSpeed = chopPulseFrequencyOrder * 14.0;
     auto chopPulseOffset=(chopPulseDist/v_1+chopPulseDist/v_0)/2.0+ModPulseLengthHighF/2.0+PulseHighFluxOffset;
-    auto chopPulsePhaseOffset=  (chopPulseOffset+ chopPulseOpening/2.0)*14.0*chopPulseFrequencyOrder*360.0-170.0/2.0;
-    auto chopPulse2PhaseOffset= chopPulsePhaseOffset- 360.0*(chopPulseOpening*14.0*chopPulseFrequencyOrder)+170.0;
 
-    if  (chopPulseFrequencyOrder == 0) {
-        chopPulsePhaseOffset= 0;
-        chopPulse2PhaseOffset= 0;
+    // The two disks turn together -- same speed, same direction -- and each is open for
+    // as long as its slit takes to cross the beam. Running one behind the other leaves
+    // only the part of that crossing they are both open for, so the burst is as short as
+    // the lag makes it: a slit crossing less the lag. Lag them by the crossing less the
+    // requested opening and the burst is the requested opening, at any speed.
+    //
+    // A disk is set by when its own slit centre is on the beam, so the two settings sit
+    // half a burst either side of the band's arrival, each moved out by half a crossing.
+    double chopPulseDelay = 0.0, chopPulse2Delay = 0.0;
+    if (chopPulseFrequencyOrder == 0) {
         printf(" \n \n Warning: Pulse shaping chopper parked! Setting the offsets to zero");
+    } else {
+        auto chopPulseOpenTime = 170.0 / 360.0 / chopPulseSpeed;  // one slit, in seconds
+        chopPulseDelay = chopPulseOffset + chopPulseOpening / 2.0 - chopPulseOpenTime / 2.0;
+        chopPulse2Delay = chopPulseDelay - chopPulseOpening + chopPulseOpenTime;
     }
 
 
 /*********** Frame Overlap chopper calculations ******************/
+    // The offsets are already the times a band's middle reaches each disk, which is what
+    // a chopper delay is. They were multiplied up by 14 * 360 to state them as an angle.
     auto chopFrameOverlap1Open= 1.0/14.0/InstLength*(chopFrameOverlap1Pos)*1.5 ;
     auto chopFrameOverlap1Offset=(  ( (chopFrameOverlap1Pos)/v_1+(chopFrameOverlap1Pos)/v_0)/2.0+PulseHighFluxOffset+ModPulseLengthHighF/2.0) ;
-    auto chopFrameOverlap1PhaseOffset=  (chopFrameOverlap1Offset)*14.0*360.0;
 
     auto chopFrameOverlap2Open= 1.0/14.0/InstLength*(chopFrameOverlap2Pos)*1.65 ;
     auto chopFrameOverlap2Offset=(  ( (chopFrameOverlap2Pos)/v_1+(chopFrameOverlap2Pos)/v_0)/2.0+PulseHighFluxOffset+ModPulseLengthHighF/2.0) ;
-    auto chopFrameOverlap2PhaseOffset=  (chopFrameOverlap2Offset)*14.0*360.0;
 
 /********** Bandwidth chopper calculations ****************/
 
@@ -85,45 +93,21 @@ auto bifrost(double E_0, double L_0, double chopPulseOpening)
     auto chopBW_t1=  PulseHighFluxOffset+ModPulseLengthHighF/2.0 + chopBWPos/v_0;
 
     auto chopBWOpen= 360.0/InstLength*(chopBWPos-chopPulseDist*1); //Here Jonas put a multiplier on the choppulsedist
+    // the middle of the band the bandwidth choppers pass, so their delay outright
     auto chopBWOffset=(chopBW_t0+chopBW_t1)/2.0;
-    auto chopBWPhaseOffset=  (chopBWOffset)*14.0*360.0;
 
-//    auto ps1 = std::make_pair(chopPulseFrequencyOrder * 14.0, chopPulsePhaseOffset);
-//    auto ps2 = std::make_pair(chopPulseFrequencyOrder * 14.0, chopPulse2PhaseOffset);
-//    auto fo1 = std::make_pair(14.0, chopFrameOverlap1PhaseOffset);
-//    auto fo2 = std::make_pair(14.0, chopFrameOverlap2PhaseOffset);
-//    // For some reason the instrument uses the delay time rather than the phase offset for the Bandwidth choppers
-//    auto bw1 = std::make_pair(14.0, chopBWPhaseOffset);
-//    auto bw2 = std::make_pair(-14.0, -chopBWPhaseOffset);
-
+    // The second bandwidth disk counter-rotates, and takes the same delay as the first:
+    // both are on the beam at the middle of the band, whichever way they turn to get
+    // there. Stated as a phase this needed the reader to know that chopper-lib divided
+    // by the magnitude of the speed, so that the same positive angle meant the same
+    // positive time for either sign.
     std::map<std::string, chopper_parameters> cpm;
-    cpm["ps1"] = {.speed=chopPulseFrequencyOrder * 14.0, .phase=chopPulsePhaseOffset, .angle=170.0, .path=chopPulseDist};//, .delay=chopPulseOffset};
-    cpm["ps2"] = {.speed=chopPulseFrequencyOrder * 14.0, .phase=chopPulse2PhaseOffset, .angle=170.0, .path=chopPulseDist + 0.02}; //, .delay=chopPulseOffset};
-    cpm["fo1"] = {.speed=14.0, .phase=chopFrameOverlap1PhaseOffset, .angle=38.26, .path=chopFrameOverlap1Pos}; // , .delay=chopFrameOverlap1Offset};
-    cpm["fo2"] = {.speed=14.0, .phase=chopFrameOverlap2PhaseOffset, .angle=52.01, .path=chopFrameOverlap2Pos}; // .delay=chopFrameOverlap2Offset};
-    cpm["bw1"] = {.speed=14.0, .phase=chopBWPhaseOffset, .angle=161.0, .path=chopBWPos}; // .delay=chopBWOffset};
-    cpm["bw2"] = {.speed=-14.0, .phase=chopBWPhaseOffset, .angle=161.0, .path=chopBWPos + 0.02}; // .delay=chopBWOffset};
+    cpm["ps1"] = {.speed=chopPulseSpeed, .delay=chopPulseDelay, .angle=170.0, .path=chopPulseDist};
+    cpm["ps2"] = {.speed=chopPulseSpeed, .delay=chopPulse2Delay, .angle=170.0, .path=chopPulseDist + 0.02};
+    cpm["fo1"] = {.speed=14.0, .delay=chopFrameOverlap1Offset, .angle=38.26, .path=chopFrameOverlap1Pos};
+    cpm["fo2"] = {.speed=14.0, .delay=chopFrameOverlap2Offset, .angle=52.01, .path=chopFrameOverlap2Pos};
+    cpm["bw1"] = {.speed=14.0, .delay=chopBWOffset, .angle=161.0, .path=chopBWPos};
+    cpm["bw2"] = {.speed=-14.0, .delay=chopBWOffset, .angle=161.0, .path=chopBWPos + 0.02};
 
     return cpm;
-
-//    std::map<std::string, double> choppers;
-//    choppers["ps1speed"] = chopPulseFrequencyOrder * 14.0;
-//    choppers["ps2speed"] = chopPulseFrequencyOrder * 14.0;
-//    choppers["fo1speed"] = 14.0;
-//    choppers["fo2speed"] = 14.0;
-//    choppers["bw1speed"] = 14.0;
-//    choppers["bw2speed"] = -14.0;
-//    choppers["ps1phase"] = chopPulsePhaseOffset;
-//    choppers["ps2phase"] = chopPulse2PhaseOffset;
-//    choppers["fo1phase"] = chopFrameOverlap1PhaseOffset;
-//    choppers["fo2phase"] = chopFrameOverlap2PhaseOffset;
-//    choppers["bw1phase"] = chopBWPhaseOffset;
-//    choppers["bw2phase"] = chopBWPhaseOffset;
-//    choppers["ps1delay"] = chopPulseOffset;
-//    choppers["ps2delay"] = chopPulseOffset;
-//    choppers["fo1delay"] = chopFrameOverlap1Offset;
-//    choppers["fo2delay"] = chopFrameOverlap2Offset;
-//    choppers["bw1delay"] = chopBW_t0;
-//    choppers["bw2delay"] = chopBW_t1;
-//    return choppers;
 }

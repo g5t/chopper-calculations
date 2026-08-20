@@ -13,5 +13,6 @@ using namespace nb::literals;
 
 NB_MODULE(_chopcal_impl, m) {
 m.def("bifrost", &bifrost, "e_max"_a, "lambda_min"_a=0, "shaping_time"_a=0.0002,
-      "Calculate chopper parameters for the BIFROST spectrometer. Each of (phase, delay, phase) for the six choppers.");
+      "Calculate chopper parameters for the BIFROST spectrometer, as a speed, delay,\n"
+      "opening angle and flight path for each of its six choppers.");
 }
