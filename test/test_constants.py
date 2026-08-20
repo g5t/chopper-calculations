@@ -79,6 +79,21 @@ def test_the_two_wavelength_conversions_agree():
     assert c.K2V * 2 * c.PI == pytest.approx(c.H_OVER_M, rel=TO_LAST_BIT)
 
 
+def test_pi_is_pi():
+    """Spelled out rather than taken from <numbers>.
+
+    That header is C++20 *library*, and the musllinux images cibuildwheel targets ship a
+    libstdc++ without it even though the compiler takes C++20 language features -- so
+    including it broke the cp311 and cp312 musllinux wheels. The literal carries more
+    digits than a double holds, so it is bit-identical to std::numbers::pi_v<double>.
+    """
+    from math import pi
+
+    assert chopcal.constants.PI == pi
+    # and the conversions built on it stay consistent with each other
+    assert chopcal.constants.V2K * chopcal.constants.K2V == pytest.approx(1.0, rel=TO_LAST_BIT)
+
+
 def test_the_ess_values_are_the_ones_mcstas_simulates_with():
     """From mcstas-comps/share/ESS_butterfly-lib.h.
 
