@@ -41,7 +41,7 @@ if (NOT SKBUILD)
 endif()
 
 include(fetcher)
-git_fetch(chopper_lib main https://github.com/mcdotstar/mcstas-chopper-lib.git False)
+git_fetch(chopper_lib 2.0.0 https://github.com/mcdotstar/mcstas-chopper-lib.git False)
 
 # Import nanobind through CMake's find_package mechanism
 find_package(nanobind CONFIG REQUIRED)
