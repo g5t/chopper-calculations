@@ -32,9 +32,9 @@ using namespace nb::literals;
 
 NB_MODULE(_chopper_lib_impl, m) {
 nb::class_<chopper_parameters>(m, "Chopper")
-      .def(nb::init<double, double, double, double>(), "speed"_a=0, "phase"_a=0, "angle"_a=0, "path"_a=0)
+      .def(nb::init<double, double, double, double>(), "speed"_a=0, "delay"_a=0, "angle"_a=0, "path"_a=0)
       .def_rw("speed", &chopper_parameters::speed, "Disk rotation speed in Hz")
-      .def_rw("phase", &chopper_parameters::phase, "Disk rotation phase in degrees")
+      .def_rw("delay", &chopper_parameters::delay, "When an opening is on the beam, in seconds")
       .def_rw("angle", &chopper_parameters::angle, "Disk opening angle in degrees")
       .def_rw("path", &chopper_parameters::path, "Source to disk path length path in meters")
       ;

@@ -2,7 +2,7 @@ from chopcal._chopper_lib_impl import Chopper, inverse_velocity_windows, inverse
 
 
 def _chopper_str(chopper):
-    return f"Chopper[{chopper.speed} Hz, {chopper.phase} deg, {chopper.angle} deg, {chopper.path} m]"
+    return f"Chopper[{chopper.speed} Hz, {chopper.delay} s, {chopper.angle} deg, {chopper.path} m]"
 
 
 Chopper.__str__ = _chopper_str
