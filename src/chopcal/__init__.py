@@ -10,6 +10,7 @@ del version
 del PackageNotFoundError
 
 from chopcal._chopcal_impl import bifrost as _bifrost
+from chopcal._chopcal_impl import constants
 import chopcal.lib as lib
 
 # The band the BIFROST chopper train passes, fixed by the 14 Hz source period and the
@@ -85,5 +86,6 @@ __all__ = [
     "__version__",
     "BIFROST_BANDWIDTH",
     "bifrost",
+    "constants",
     "lib"
 ]

@@ -9,8 +9,11 @@ def get_factors():
         h_over_m = (Planck / neutron_mass).to(unit='angstrom m/s').value
         h2_over_2m = (Planck * Planck / 2 / neutron_mass).to(unit='millielectronvolt angstrom * angstrom').value
     else:
-        h_over_m = 3956.0340120714636
-        h2_over_2m = 81.8042103582802
+        # No scipp here -- which is the case when cibuildwheel builds a wheel, since
+        # test-requires deliberately leaves out scipp and scipy. These are the same
+        # values chopcal was compiled with; test_constants holds them to that.
+        from chopcal import constants
+        h_over_m, h2_over_2m = constants.H_OVER_M, constants.H2_OVER_2M
     return h_over_m, h2_over_2m
 
 
@@ -33,8 +36,11 @@ def do_test_choplib():
     assert all(x - y < 0.025 for x, y in zip(lambdas, maximum))
 
     h_m, h2_2m = get_factors()
-    active_length = 162 - (4.41 + 0.032 + 2.0 - 0.1)
-    maximum_bandwidth = 1 / active_length / 14.0 * h_m   # ~= 1.815 -- why isn't this 1.77?
+    # the same geometry the calculation itself uses, rather than a third copy of it
+    from chopcal import constants
+    active_length = constants.INSTRUMENT_LENGTH - constants.PULSE_SHAPING_DISTANCE
+    maximum_bandwidth = 1 / active_length / constants.SOURCE_FREQUENCY * h_m  # ~= 1.815, not 1.77:
+    # the band is cut by the 161 degree bandwidth opening, not by this nominal width
     expected_bandwidth = 1.77  # why isn't this 1.815??
 
     difference = [x - y for x, y in zip(maximum, minimum)]

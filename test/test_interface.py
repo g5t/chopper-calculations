@@ -11,7 +11,13 @@ def band(settings):
 
 
 def to_energy(wavelength):
-    return 81.8042103582802 / (wavelength * wavelength)
+    """The same h^2/2m the calculation uses, not a copy of it.
+
+    A literal here was 1.5e-9 off, which was enough to leave a residue in the round-trip
+    test below once the C++ constants were made consistent.
+    """
+    from chopcal import constants
+    return constants.H2_OVER_2M / (wavelength * wavelength)
 
 
 class ArgumentSenseTestCase(unittest.TestCase):
@@ -46,12 +52,18 @@ class ArgumentSenseTestCase(unittest.TestCase):
             self.assertAlmostEqual(high - low, BIFROST_BANDWIDTH, delta=0.01)
 
     def test_either_unit_places_the_same_band(self):
+        """The two ways of asking must be the same question.
+
+        This needed a 0.01 AA tolerance while the code held two values of h^2/2m --
+        81.82 in one line and 0.1106, its inverse square root, in the next, differing by
+        0.043%. They come from one constant now, so the agreement is exact.
+        """
         from chopcal import bifrost
         wavelength = 3.0
         by_wavelength = band(bifrost(wavelength_max=wavelength))
         by_energy = band(bifrost(energy_min=to_energy(wavelength)))
         for a, b in zip(by_wavelength, by_energy):
-            self.assertAlmostEqual(a, b, delta=0.01)
+            self.assertAlmostEqual(a, b, delta=1e-12)
 
     def test_a_wavelength_overrides_an_energy(self):
         from chopcal import bifrost

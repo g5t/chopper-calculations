@@ -9,23 +9,23 @@ extern "C" {
 #include <chopper-lib.h>
 }
 
-// Use the McStas defines if possible, or define them ourselves
-#ifndef V2K
-#define V2K 1.58825361e-3     /* Convert v[m/s] to k[1/AA] */
-#endif
-#ifndef K2V
-#define K2V 629.622368        /* Convert k[1/AA] to v[m/s] */
-#endif
-#ifndef PI
-#define PI 3.14159265358979323846
-#endif
+#include "constants.h"
 
-#define LAMBDA_MIN 1e-4
-#define LAMBDA_MAX 1e2
-#define L2INVV(L) (L / 2 / PI / K2V)
-#define INVERSE_V_MIN L2INVV(LAMBDA_MIN)
-#define INVERSE_V_MAX L2INVV(LAMBDA_MAX)
-#define LATEST_EMISSION 0.003
+// These fell back to McStas' own macros when the file was built inside an instrument,
+// which never happens: this is a nanobind extension, so the literals were always what
+// compiled. chopper-lib.c keeps its own #ifndef copy for the conversion that matters --
+// there the McStas value should win, so that an embedded build agrees with McStas rather
+// than with CODATA. What follows only sets the default search bounds below.
+using chopcal::constants::K2V;
+using chopcal::constants::PI;
+
+/// Wavelength bounds searched when a caller does not give their own, angstrom.
+inline constexpr double LAMBDA_MIN = 1e-4;
+inline constexpr double LAMBDA_MAX = 1e2;
+inline constexpr double INVERSE_V_MIN = LAMBDA_MIN / 2 / PI / K2V;
+inline constexpr double INVERSE_V_MAX = LAMBDA_MAX / 2 / PI / K2V;
+/// How long after t=0 a neutron may still be emitted, s.
+inline constexpr double LATEST_EMISSION = 0.003;
 
 namespace nb = nanobind;
 using namespace nb::literals;
