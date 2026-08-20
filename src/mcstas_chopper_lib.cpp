@@ -31,12 +31,19 @@ namespace nb = nanobind;
 using namespace nb::literals;
 
 NB_MODULE(_chopper_lib_impl, m) {
-nb::class_<chopper_parameters>(m, "Chopper")
+nb::class_<chopper_parameters>(m, "Chopper",
+      "One disk chopper: how fast it turns, when it is open, how wide, and how far away.\n\n"
+      "An opening is centred on the beam at `delay` and again every 1/`speed` after\n"
+      "that, staying there for `angle`/360/|`speed`| seconds each time. A negative\n"
+      "`speed` turns the disk the other way, which changes none of that -- a delay is a\n"
+      "time, so it means the same thing in either direction.")
       .def(nb::init<double, double, double, double>(), "speed"_a=0, "delay"_a=0, "angle"_a=0, "path"_a=0)
-      .def_rw("speed", &chopper_parameters::speed, "Disk rotation speed in Hz")
-      .def_rw("delay", &chopper_parameters::delay, "When an opening is on the beam, in seconds")
-      .def_rw("angle", &chopper_parameters::angle, "Disk opening angle in degrees")
-      .def_rw("path", &chopper_parameters::path, "Source to disk path length path in meters")
+      .def_rw("speed", &chopper_parameters::speed,
+              "Rotation frequency in Hz; negative turns the disk the other way")
+      .def_rw("delay", &chopper_parameters::delay,
+              "When an opening is centred on the beam, in seconds")
+      .def_rw("angle", &chopper_parameters::angle, "Angular width of one opening, in degrees")
+      .def_rw("path", &chopper_parameters::path, "Flight path from the source to the disk, in metres")
       ;
 
 m.def("inverse_velocity_windows",

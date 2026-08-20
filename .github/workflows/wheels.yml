@@ -10,6 +10,10 @@ on:
     types:
       - published
 
+concurrency:
+  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: true
+
 jobs:
   build_sdist:
     name: Build SDist
@@ -45,10 +49,18 @@ jobs:
         fetch-depth: 0
         submodules: true
 
+    # A pull request builds one wheel per OS. That is enough to prove the packaging
+    # path still works -- scikit-build-core, the stable ABI tag, the test command --
+    # while pip.yml covers correctness across Python versions on the host. Pushes to
+    # main, releases, and any PR labelled 'full-ci' build the whole matrix.
     - uses: pypa/cibuildwheel@v2.17.0
       env:
-        # Cross-compile on macOS
-        CIBW_ARCHS_MACOS: x86_64 arm64
+        CIBW_BUILD: ${{ (github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'full-ci')) && 'cp312-*' || '*' }}
+        CIBW_SKIP: ${{ (github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'full-ci')) && '*-musllinux*' || '' }}
+
+        # Cross-compile on macOS, except for the smoke build where the runner's own
+        # architecture is the one that can actually run the tests
+        CIBW_ARCHS_MACOS: ${{ (github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'full-ci')) && 'arm64' || 'x86_64 arm64' }}
 
         # Temporary: use pre-release Python 3.12 for stable ABI builds
         # CIBW_PRERELEASE_PYTHONS: True
