@@ -22,14 +22,14 @@ jobs:
       # oldest and newest, which is where a version-dependent break would show up.
       matrix:
         platform: [ubuntu-latest]
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13"]
         include:
           - platform: macos-latest
-            python-version: "3.9"
+            python-version: "3.11"
           - platform: macos-latest
             python-version: "3.13"
           - platform: windows-latest
-            python-version: "3.9"
+            python-version: "3.11"
           - platform: windows-latest
             python-version: "3.13"
 
