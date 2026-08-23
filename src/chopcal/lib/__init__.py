@@ -15,8 +15,39 @@ def _chopper_str(chopper):
             f"{chopper.path:g} m from the source")
 
 
+def _scipp():
+    """scipp, if it is installed. It is not a dependency, and does not become one."""
+    try:
+        import scipp
+    except ImportError as error:
+        raise ImportError(
+            'chopper quantities need scipp: pip install scipp. The plain attributes '
+            'need nothing -- speed is Hz, delay seconds, angle degrees, path metres.'
+        ) from error
+    return scipp
+
+
+_UNITS = (('speed', 'Hz'), ('delay', 's'), ('angle', 'deg'), ('path', 'm'))
+
+
+def _chopper_quantities(chopper):
+    """The four fields as scipp scalars, each carrying its own unit.
+
+    The attributes are plain numbers in fixed units -- Hz, seconds, degrees, metres --
+    and this is the same four values with the units attached, so that whatever reads them
+    can convert rather than assume. Worth reaching for whenever the numbers are going
+    somewhere else: the table above prints delays in milliseconds because that is the
+    scale they live on, while ``chopper.delay`` is in seconds, and a scalar cannot be
+    read the wrong way round.
+    """
+    sc = _scipp()
+    return {field: sc.scalar(float(getattr(chopper, field)), unit=unit)
+            for field, unit in _UNITS}
+
+
 Chopper.__repr__ = _chopper_repr
 Chopper.__str__ = _chopper_str
+Chopper.quantities = property(_chopper_quantities)
 
 
 _COLUMNS = (
@@ -40,7 +71,19 @@ class ChopperSet(dict):
     a chopper passes neutrons from ``delay - open/2`` to ``delay + open/2``, and again
     every ``1/speed`` after that. Both are shown in milliseconds because that is the
     scale they live on; the attributes themselves are in seconds.
+
+    Use :attr:`quantities` to get them as scipp scalars instead, which is the safer thing
+    to hand to anything else -- the units come along and cannot be misread.
     """
+
+    @property
+    def quantities(self):
+        """Every chopper's fields as scipp scalars, by name.
+
+            >>> settings.quantities['ps1']['delay']     # doctest: +SKIP
+            <scipp.Variable> ()  float64  [s]  0.00595313
+        """
+        return {name: chopper.quantities for name, chopper in self.items()}
 
     def _rows(self):
         return [[fmt.format(get(name, chopper)) for _, fmt, get in _COLUMNS]
