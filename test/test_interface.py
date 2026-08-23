@@ -1,5 +1,14 @@
 """What `chopcal.bifrost` asks for and what it hands back."""
 import unittest
+from importlib.util import find_spec
+
+
+def scippAvailable():
+    return find_spec('scipp') is not None
+
+
+def IPythonAvailable():
+    return find_spec('IPython') is not None
 
 
 def band(settings):
@@ -111,6 +120,7 @@ class ChopperSetTestCase(unittest.TestCase):
         # one header line and one line per chopper
         self.assertEqual(len(text.splitlines()), 7)
 
+    @unittest.skipUnless(IPythonAvailable(), "IPython needed for test")
     def test_ipython_uses_that_table_too(self):
         """A dict subclass is pretty-printed as a dict unless it says otherwise."""
         pretty = __import__('IPython.lib.pretty', fromlist=['pretty']).pretty
@@ -145,10 +155,7 @@ class ChopperTestCase(unittest.TestCase):
         self.assertIn('anticlockwise', str(self.settings['bw1']))
 
 
-if __name__ == '__main__':
-    unittest.main()
-
-
+@unittest.skipUnless(scippAvailable(), "scipp needed for tests")
 class QuantitiesTestCase(unittest.TestCase):
     """The fields as scipp scalars, for handing to something that wants units."""
 
@@ -189,3 +196,6 @@ class QuantitiesTestCase(unittest.TestCase):
         delay = self.settings['ps1'].quantities['delay']
         self.assertAlmostEqual(delay.to(unit='ms').value, self.settings['ps1'].delay * 1e3,
                                places=9)
+
+if __name__ == '__main__':
+    unittest.main()
