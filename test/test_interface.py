@@ -147,3 +147,45 @@ class ChopperTestCase(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class QuantitiesTestCase(unittest.TestCase):
+    """The fields as scipp scalars, for handing to something that wants units."""
+
+    def setUp(self):
+        from chopcal import bifrost
+        self.settings = bifrost(energy_min=4.5)
+
+    def test_a_chopper_gives_its_four_fields_with_units(self):
+        quantities = self.settings['ps1'].quantities
+        self.assertEqual(set(quantities), {'speed', 'delay', 'angle', 'path'})
+        self.assertEqual(str(quantities['speed'].unit), 'Hz')
+        self.assertEqual(str(quantities['delay'].unit), 's')
+        self.assertEqual(str(quantities['angle'].unit), 'deg')
+        self.assertEqual(str(quantities['path'].unit), 'm')
+
+    def test_they_are_the_same_numbers_the_attributes_hold(self):
+        """The table prints delays in milliseconds; the attribute is in seconds.
+
+        That is the ambiguity these exist to remove, so they must agree with the
+        attribute rather than with the table.
+        """
+        for name, chopper in self.settings.items():
+            quantities = chopper.quantities
+            self.assertAlmostEqual(quantities['speed'].value, chopper.speed, places=12)
+            self.assertAlmostEqual(quantities['delay'].value, chopper.delay, places=12)
+
+    def test_a_negative_speed_keeps_its_sign(self):
+        """bw2 counter-rotates, and a unit must not swallow that."""
+        self.assertLess(self.settings['bw2'].quantities['speed'].value, 0)
+
+    def test_a_set_gives_every_chopper(self):
+        quantities = self.settings.quantities
+        self.assertEqual(set(quantities), set(self.settings))
+        self.assertEqual(quantities['ps1']['delay'].value, self.settings['ps1'].delay)
+
+    def test_converting_is_the_caller_s_business_and_it_works(self):
+        """The point of handing back units: whoever reads them can ask for others."""
+        delay = self.settings['ps1'].quantities['delay']
+        self.assertAlmostEqual(delay.to(unit='ms').value, self.settings['ps1'].delay * 1e3,
+                               places=9)
