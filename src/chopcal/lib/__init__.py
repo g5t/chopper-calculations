@@ -2,9 +2,11 @@ from enum import IntEnum
 
 from chopcal._chopper_lib_impl import (
     Chopper,
+    beam_aperture,
     inverse_velocity_windows,
     inverse_velocity_limits,
     wavelength_limits,
+    wavelength_windows,
     MASK_EXCLUDED,
     MASK_INCLUDED,
     MASK_GROWN,
@@ -144,6 +146,7 @@ _COLUMNS = (
     ('beam [deg]', '{:.6g}', lambda name, c: c.beam),
     ('opening [deg]', '{}', lambda name, c: _opening_column(c)),
     ('open [ms]', '{:.4g}', lambda name, c: _open_ms(c)),
+    ('aperture [deg]', '{:.4g}', lambda name, c: c.aperture),
     ('path [m]', '{:.6g}', lambda name, c: c.path),
 )
 
@@ -159,6 +162,10 @@ class ChopperSet(dict):
     passes neutrons from ``delay - open/2`` to ``delay + open/2``, and again every
     ``1/speed`` after that. Both are shown in milliseconds because that is the scale they
     live on; the attributes themselves are in seconds.
+
+    ``aperture`` is how wide the beam is on the disk, in degrees about its spindle. It
+    widens every window by half of it at each end, so ``open`` understates the time a
+    real beam spends in the openings; zero is a point beam.
 
     Use :attr:`quantities` to get them as scipp variables instead, which is the safer
     thing to hand to anything else -- the units come along and cannot be misread.
@@ -305,11 +312,13 @@ _MaskSampler.sample = _sample
 __all__ = [
     'Chopper',
     'ChopperSet',
+    'beam_aperture',
     'MaskSampler',
     'MaskValue',
     'inverse_velocity_windows',
     'inverse_velocity_limits',
     'wavelength_limits',
+    'wavelength_windows',
     'inverse_velocity_time_mask',
     'unmasked_probability',
 ]

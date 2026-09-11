@@ -82,6 +82,19 @@ target_include_directories(_chopper_lib_impl PRIVATE ${chopper_lib_SOURCE_DIR})
 set_source_files_properties(${chopper_lib_SOURCE_DIR}/chopper-lib.c PROPERTIES
         COMPILE_DEFINITIONS "${CHOPPER_LIB_DEFINITIONS}")
 
+# The bindings convert between wavelength and inverse velocity, and have to do it with
+# the same numbers the library does or the two disagree in the eighth digit. Same source
+# of truth, re-emitted under prefixed names so the C++ can read them without PI, V2K and
+# K2V colliding with the chopcal::constants variables of those names.
+set(CHOPCAL_RUNTIME_DEFINITIONS)
+foreach (definition IN LISTS CHOPPER_LIB_DEFINITIONS)
+    if (definition MATCHES "^([A-Za-z0-9_]+)=(.*)$")
+        list(APPEND CHOPCAL_RUNTIME_DEFINITIONS
+                "CHOPPER_LIB_${CMAKE_MATCH_1}=${CMAKE_MATCH_2}")
+    endif ()
+endforeach ()
+target_compile_definitions(_chopper_lib_impl PRIVATE ${CHOPCAL_RUNTIME_DEFINITIONS})
+
 # Install directive for scikit-build-core
 install(TARGETS _chopcal_impl LIBRARY DESTINATION chopcal)
 install(TARGETS _chopper_lib_impl LIBRARY DESTINATION chopcal)

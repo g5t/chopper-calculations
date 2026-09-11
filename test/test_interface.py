@@ -12,11 +12,22 @@ def IPythonAvailable():
 
 
 def band(settings):
-    """The wavelength range the train passes, in angstrom."""
-    from chopcal.lib import wavelength_limits
-    count, (low, high) = wavelength_limits(list(settings.values()))
-    assert count == 1, f'expected one band, got {count}'
-    return low, high
+    """The wavelength band the train passes, in angstrom.
+
+    The first window rather than the envelope: with the beam at its real width the train
+    also leaks a sliver near 38 AA, so the envelope spans a gap it does not pass.
+    """
+    from chopcal.lib import wavelength_windows
+    windows = wavelength_windows(list(settings.values()))
+    assert windows, 'expected at least one band'
+    return windows[0]
+
+
+def to_wavelength(energy):
+    """The inverse of to_energy, from the same constant."""
+    from math import sqrt
+    from chopcal import constants
+    return sqrt(constants.H2_OVER_2M / energy)
 
 
 def to_energy(wavelength):
@@ -41,17 +52,25 @@ class ArgumentSenseTestCase(unittest.TestCase):
         from chopcal import bifrost
         for requested in (2.0, 3.0, 4.0):
             low, high = band(bifrost(wavelength_max=requested))
-            self.assertAlmostEqual(high, requested, delta=0.03)
+            # The settings place the band's centre, and a real beam widens it about that
+            # centre, so the top edge sits ~0.05 AA past what was asked for. Pass
+            # apertures=False and this tightens to 0.02 the other way.
+            self.assertAlmostEqual(high, requested, delta=0.06)
             self.assertLess(low, requested)
 
     def test_energy_min_is_the_bottom_of_the_band(self):
+        """Long wavelength is low energy, so the top of the band in AA is its bottom in meV.
+
+        Checked in wavelength rather than in energy. A real beam puts the band's top edge
+        a fixed ~0.05 AA past what was asked for, and energy goes as 1/lambda^2, so that
+        one offset is 1.6% at 2 meV and 4.1% at 14 meV -- a tolerance in meV would have to
+        be loose enough at the top end to say almost nothing at the bottom.
+        """
         from chopcal import bifrost
         for requested in (2.0, 5.0, 7.0, 14.0):
             low, high = band(bifrost(energy_min=requested))
-            # long wavelength is low energy, so the top of the band in angstrom is the
-            # bottom of it in meV
-            self.assertAlmostEqual(to_energy(high), requested,
-                                   delta=0.02 * requested)
+            self.assertAlmostEqual(high, to_wavelength(requested), delta=0.06)
+            # and everything faster than the requested energy is still passed
             self.assertGreater(to_energy(low), requested)
 
     def test_the_band_is_a_fixed_width(self):

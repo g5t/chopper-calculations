@@ -31,6 +31,22 @@ inline constexpr double INVERSE_V_MAX = LAMBDA_MAX / 2 / PI / K2V;
 /// How long after t=0 a neutron may still be emitted, s.
 inline constexpr double LATEST_EMISSION = 0.003;
 
+// The library's own conversion numbers, passed in by CMake from the same
+// CHOPPER_LIB_DEFINITIONS the C file is compiled with, under prefixed names so they do
+// not collide with the chopcal::constants variables called PI, V2K and K2V. Converting
+// with anything else would put `wavelength_windows` and `wavelength_limits` -- which the
+// C converts for itself -- into disagreement.
+#if !defined(CHOPPER_LIB_V2K) || !defined(CHOPPER_LIB_K2V) || !defined(CHOPPER_LIB_PI)
+#error "Build with CHOPCAL_RUNTIME_DEFINITIONS; see CMakeLists.txt"
+#endif
+/// Wavelength in angstrom to inverse velocity in s/m, as chopper_wavelength_limits does it.
+inline constexpr double wavelength_to_inverse_velocity(const double lambda) {
+  return lambda * CHOPPER_LIB_V2K / 2 / CHOPPER_LIB_PI;
+}
+inline constexpr double inverse_velocity_to_wavelength(const double inverse_velocity) {
+  return inverse_velocity * CHOPPER_LIB_K2V * 2 * CHOPPER_LIB_PI;
+}
+
 namespace nb = nanobind;
 using namespace nb::literals;
 using chopcal::Chopper;
@@ -233,6 +249,30 @@ m.def("inverse_velocity_limits",
       "does not pass; use `inverse_velocity_windows` for the bands themselves."
 );
 
+m.def("wavelength_windows",
+      [](const std::vector<Chopper> & choppers, const double lambda_min,
+         const double lambda_max, const double latest_emission) {
+            const auto pars = chopcal::c_structs(choppers);
+            const auto rs = chopper_inverse_velocity_windows(
+                static_cast<unsigned>(pars.size()), pars.data(),
+                wavelength_to_inverse_velocity(lambda_min),
+                wavelength_to_inverse_velocity(lambda_max), latest_emission);
+            std::vector<std::pair<double, double>> out;
+            out.reserve(rs.count);
+            for (unsigned i = 0; i < rs.count; ++i)
+              out.emplace_back(inverse_velocity_to_wavelength(rs.ranges[i].minimum),
+                               inverse_velocity_to_wavelength(rs.ranges[i].maximum));
+            if (rs.ranges) free(rs.ranges);
+            return out;
+      }, "choppers"_a, "wavelength_min"_a=LAMBDA_MIN, "wavelength_max"_a=LAMBDA_MAX,
+         "latest_emission"_a=LATEST_EMISSION,
+      "Every wavelength band the train passes, in angstrom.\n\n"
+      "The band list rather than the envelope `wavelength_limits` returns, and the one to\n"
+      "reach for when there is more than one: an envelope spanning two bands also spans\n"
+      "the gap between them, which the train does not pass.\n\n"
+      "See `wavelength_limits` on why a band here may be narrower than it looks."
+);
+
 m.def("wavelength_limits",
       [](const std::vector<Chopper> & choppers, const double lambda_min,
          const double lambda_max, const double latest_emission) {
@@ -244,8 +284,32 @@ m.def("wavelength_limits",
             return std::make_tuple(no, out);
       }, "choppers"_a, "wavelength_min"_a=LAMBDA_MIN, "wavelength_max"_a=LAMBDA_MAX,
          "latest_emission"_a=LATEST_EMISSION,
-      "The same envelope in angstrom, as (count, (low, high))."
+      "The same envelope in angstrom, as (count, (low, high)).\n\n"
+      "A count above one means the envelope also spans wavelengths the train does not\n"
+      "pass; `wavelength_windows` gives the bands themselves.\n\n"
+      "This and `wavelength_windows` are an *over*-approximation. chopper-lib works out\n"
+      "each disk's admissible inverse velocities letting the emission time range over the\n"
+      "whole pulse independently, then intersects those ranges, so it can report a band\n"
+      "that no single emission time actually delivers -- an intersection of projections\n"
+      "is a superset of the projection of the intersection. It is tight where the disks\n"
+      "leave wide, overlapping emission windows, which is the usual case and includes\n"
+      "every band an instrument is set up to pass. `inverse_velocity_time_mask` keeps the\n"
+      "two coordinates coupled and does not make this error; where the two disagree, the\n"
+      "mask is right."
 );
+
+m.def("beam_aperture", &chopcal::beam_aperture,
+      "radius"_a, "slit_height"_a, "window_width"_a, "window_height"_a,
+      "The angular width of a beam where it crosses a disk, in degrees.\n\n"
+      "This is what `Chopper.aperture` wants. An opening is angular and a beam is not, so\n"
+      "a neutron crossing to one side of the beam centre meets an edge early or late; the\n"
+      "largest such angle belongs to the inner corners of the beam window, nearest the\n"
+      "spindle, where a given width subtends the most angle.\n\n"
+      "`slit_height` is the radial extent of the opening cut in the disk -- McStas\n"
+      "`DiskChopper`'s `yheight`, which puts the beam centre at `radius - yheight/2`.\n"
+      "`window_width` and `window_height` describe the beam inside it, which is smaller.\n\n"
+      "All four lengths in metres; the answer is in degrees.")
+      ;
 
 m.attr("MASK_EXCLUDED") = static_cast<int>(CHOPPER_MASK_EXCLUDED);
 m.attr("MASK_INCLUDED") = static_cast<int>(CHOPPER_MASK_INCLUDED);

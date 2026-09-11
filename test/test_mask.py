@@ -79,12 +79,12 @@ class MaskAgreesWithTheWindowsTestCase(unittest.TestCase):
     """The mask and the window functions answer the same question two ways."""
 
     def test_the_allowed_rows_lie_inside_the_inverse_velocity_limits(self):
-        from chopcal.lib import inverse_velocity_time_mask, inverse_velocity_limits, MaskValue
+        from chopcal.lib import inverse_velocity_time_mask, inverse_velocity_windows, MaskValue
         train = bifrost_train()
         inverse_velocities, times = grid()
         mask, _ = inverse_velocity_time_mask(train, inverse_velocities, times)
-        count, (low, high) = inverse_velocity_limits(train)
-        self.assertEqual(count, 1)
+        # the first window; the envelope may span a leak the train does not pass
+        low, high = inverse_velocity_windows(train)[0]
 
         allowed_columns = np.where((mask == MaskValue.INCLUDED).any(axis=0))[0]
         self.assertGreater(allowed_columns.size, 0)
@@ -201,6 +201,64 @@ class MaskSamplerTestCase(unittest.TestCase):
         self.assertLessEqual(narrow.count, self.sampler.count)
         self.assertGreaterEqual(narrow.acceptance, 0.0)
         self.assertLessEqual(narrow.acceptance, 1.0)
+
+
+@unittest.skipUnless(numpyAvailable, "numpy needed for mask tests")
+class MaskContradictsTheWindowsTestCase(unittest.TestCase):
+    """Where the two disagree, the mask is right -- and for BIFROST they disagree.
+
+    `chopper_inverse_velocity_windows` works out each disk's admissible inverse
+    velocities letting the emission time range over the whole pulse *independently per
+    disk*, then intersects those ranges. An intersection of projections is a superset of
+    the projection of the intersection, so it can report a band that no single emission
+    time delivers.
+
+    With the beam at its real width that happens to BIFROST: a ~0.03 AA sliver near 38 AA,
+    where the frame overlap disks each leave only tens of microseconds of emission time
+    and those windows do not overlap. The mask keeps inverse velocity and time coupled and
+    cannot make the error.
+
+    This is recorded rather than worked around. If chopper-lib tightens the window
+    calculation, this test fails and should be deleted.
+    """
+
+    SLIVER = (37.90, 38.05)   # angstrom
+
+    def setUp(self):
+        from chopcal import constants
+        self.train = bifrost_train()
+        self.to_wavelength = constants.K2V * 2 * constants.PI
+
+    def test_the_windows_report_a_second_band(self):
+        from chopcal.lib import wavelength_windows
+        windows = wavelength_windows(self.train)
+        self.assertEqual(len(windows), 2, 'expected the main band and the sliver')
+        low, high = windows[1]
+        self.assertGreater(low, self.SLIVER[0])
+        self.assertLess(high, self.SLIVER[1])
+
+    def test_the_mask_says_nothing_gets_through_there(self):
+        from chopcal.lib import inverse_velocity_time_mask
+        inverse_velocities = np.linspace(self.SLIVER[0] / self.to_wavelength,
+                                         self.SLIVER[1] / self.to_wavelength, 2001)
+        times = np.linspace(0.0, 3e-3, 3001)
+        _, allowed = inverse_velocity_time_mask(self.train, inverse_velocities, times)
+        self.assertEqual(allowed, 0)
+
+    def test_they_agree_on_the_band_that_matters(self):
+        """The relaxation is tight wherever the disks leave wide, overlapping windows."""
+        from chopcal.lib import inverse_velocity_time_mask, wavelength_windows
+        low, high = wavelength_windows(self.train)[0]
+        inverse_velocities = np.linspace((low - 0.05) / self.to_wavelength,
+                                         (high + 0.05) / self.to_wavelength, 2001)
+        times = np.linspace(0.0, 3e-3, 3001)
+        mask, allowed = inverse_velocity_time_mask(self.train, inverse_velocities, times)
+        self.assertGreater(allowed, 0)
+        columns = np.where(mask.any(axis=0))[0]
+        self.assertAlmostEqual(inverse_velocities[columns.min()] * self.to_wavelength,
+                               low, delta=0.01)
+        self.assertAlmostEqual(inverse_velocities[columns.max() + 1] * self.to_wavelength,
+                               high, delta=0.01)
 
 
 @unittest.skipUnless(numpyAvailable, "numpy needed for mask tests")

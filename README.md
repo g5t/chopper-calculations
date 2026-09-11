@@ -14,7 +14,9 @@ Exposes chopper calculations to Python which were otherwise hidden in McStas ins
 |                 | chopper parameters                                              | `chopcal.lib.Chopper`                  | class     |
 |                 | transmitted inverse-velocity phase space                        | `chopcal.lib.inverse_velocity_windows` | function  |
 |                 | transmitted inverse-velocity extrema                            | `chopcal.lib.inverse_velocity_limits`  | function  |
+|                 | transmitted wavelength bands                                    | `chopcal.lib.wavelength_windows`       | function  |
 |                 | transmitted wavelength extrema                                  | `chopcal.lib.wavelength_limits`        | function  |
+|                 | beam width on a disk, in degrees                                | `chopcal.lib.beam_aperture`            | function  |
 |                 | whether a parked disk stands open                               | `chopcal.lib.Chopper.parked_is_open`   | method    |
 |                 | allowed (inverse velocity, time) bins                           | `chopcal.lib.inverse_velocity_time_mask` | function |
 |                 | the allowed fraction of a signal                                | `chopcal.lib.unmasked_probability`     | function  |
@@ -23,20 +25,20 @@ Exposes chopper calculations to Python which were otherwise hidden in McStas ins
 
 ## Placing the band
 
-BIFROST passes a fixed bandwidth of about 1.77 Å, so one number decides where that band
+BIFROST passes a fixed bandwidth of about 1.91 Å, so one number decides where that band
 sits. Give it as either the **longest wavelength** or the **lowest energy** you want to
 reach the sample — the band runs from there to about 1.77 Å shorter.
 
 ```pycon
 >>> import chopcal
 >>> chopcal.bifrost(wavelength_max=3.0)
-name  speed [Hz]  delay [ms]  beam [deg]  opening [deg]  open [ms]  path [m]
- ps1         196      3.8781           0            170      2.409     6.342
- ps2         196      6.0874           0            170      2.409     6.362
- fo1          14     6.13997           0          38.26      7.591      8.53
- fo2          14     9.54764           0          52.01      10.32    14.973
- bw1          14     42.8823           0            161      31.94        78
- bw2         -14     42.8823           0            161      31.94     78.02
+name  speed [Hz]  delay [ms]  beam [deg]  opening [deg]  open [ms]  aperture [deg]  path [m]
+ ps1         196      3.8781           0            170      2.409           5.651     6.342
+ ps2         196      6.0874           0            170      2.409           5.651     6.362
+ fo1          14     6.13997           0          38.26      7.591           5.651      8.53
+ fo2          14     9.54764           0          52.01      10.32           5.651    14.973
+ bw1          14     42.8823           0            161      31.94           13.38        78
+ bw2         -14     42.8823           0            161      31.94           13.38     78.02
 >>> chopcal.lib.wavelength_limits(list(chopcal.bifrost(wavelength_max=3.0).values()))
 (1, (1.2126790814161053, 2.984239670498114))
 ```
@@ -49,7 +51,12 @@ The choppers come back by name in beam order. Each of BIFROST's is a single open
 centred on the beam, so `beam` is 0 and `edges` is `[-width/2, +width/2]`; the table's
 `open` column is how long the beam spends inside the openings each turn, and `delay` is
 when the disk point at `beam` is on the beam path. A chopper therefore passes neutrons
-for `open` seconds around `delay`, and again every `1/speed` after that.
+for `open` seconds around `delay`, and again every `1/speed` after that — a little
+longer than that, in fact, because `aperture` is how wide the beam is on the disk and
+every window opens half of it early and closes half of it late.
+
+Note the second window in the output above. It is not a band BIFROST delivers; see
+[The band list, and a caveat](#the-band-list-and-a-caveat).
 
 
 
@@ -124,6 +131,51 @@ corrects it. It is also not `unmasked_probability`, which is the allowed fractio
 this.
 
 These three need `numpy`, and only when called; nothing else in `chopcal` does.
+
+## The band list, and a caveat
+
+`wavelength_windows` gives the bands the train passes; `wavelength_limits` gives the
+envelope around them. Reach for the first when there is more than one, because an envelope
+spanning two bands also spans the gap between them.
+
+Both are an **over**-approximation. `chopper-lib` works out each disk's admissible inverse
+velocities letting the emission time range over the whole pulse independently, then
+intersects those ranges across disks — and an intersection of projections is a superset of
+the projection of the intersection. It can therefore report a band that no single emission
+time actually delivers.
+
+It is tight wherever the disks leave wide, overlapping emission windows, which is the
+usual case and includes every band an instrument is set up to pass. BIFROST with its real
+beam is the exception: a ~0.03 Å sliver near 38 Å, where the frame overlap disks each
+leave only tens of microseconds and those windows do not overlap. Three independent checks
+agree nothing gets through — a brute-force scan over emission time, an exact interval
+intersection, and `inverse_velocity_time_mask`, which keeps the two coordinates coupled and
+cannot make the error.
+
+So: where the mask and the windows disagree, the mask is right. `test_mask.py` records
+this one.
+
+## Describing a disk's beam
+
+`Chopper.aperture` is the angular width of the beam where it crosses the disk, and
+`beam_aperture` computes it from the geometry:
+
+```pycon
+>>> from chopcal.lib import beam_aperture
+>>> beam_aperture(radius=0.35, slit_height=0.09846, window_width=0.060, window_height=0.090)
+13.379...
+```
+
+`slit_height` is the radial extent of the opening — McStas `DiskChopper`'s `yheight`,
+which puts the beam centre at `radius - yheight/2` — and the window is the beam inside it.
+The largest angle belongs to the window's *inner* corners, nearest the spindle, where a
+given width subtends the most angle. Taking the width over the beam-crossing radius
+instead misses the height entirely: 11.4° where the real figure is 13.4°.
+
+`chopcal.bifrost` fills this in from the instrument's own disk geometry. Pass
+`apertures=False` for the pencil beam every release before this one described, and the
+narrower band that went with it — `BIFROST_BANDWIDTH_POINT_BEAM` rather than
+`BIFROST_BANDWIDTH`.
 
 ## Developing
 

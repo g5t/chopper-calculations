@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include "constants.h"
+
 extern "C" {
 #include <chopper-lib.h>
 }
@@ -21,6 +23,60 @@ extern "C" {
 #endif
 
 namespace chopcal {
+
+/** The angular width of a beam where it crosses a disk, in degrees.
+ *
+ * An opening is angular and a beam is not, so a neutron crossing the disk to one side of
+ * the beam centre meets an edge before or after one crossing at the centre does. The
+ * angle between them is what `chopper_parameters::aperture` widens every window by, half
+ * at each end.
+ *
+ * The largest such angle belongs to the *inner* corners of the beam window -- nearest the
+ * spindle, where a given width subtends the most angle -- so that is the radius the
+ * aperture is taken at:
+ *
+ *     beam_centre = radius - slit_height / 2      (McStas DiskChopper's delta_y)
+ *     inner       = beam_centre - window_height / 2
+ *     aperture    = 2 * atan2(window_width / 2, inner)
+ *
+ * `slit_height` is the radial extent of the opening and `window_height` that of the beam
+ * inside it; the beam is the smaller of the two, and it is the beam that bounds where a
+ * neutron can be.
+ *
+ * This follows McStas `DiskChopper`, whose slit is bounded on the inside by a circle of
+ * radius `radius - yheight` -- it absorbs below that -- so a depth is measured from the
+ * rim at the beam centre. chopper-lib's header instead measures it from where the rim has
+ * dropped to at the *edge* of the window, `sqrt(radius^2 - (width/2)^2)`, which is
+ * `radius - sqrt(radius^2 - (width/2)^2)` further in: 0.3 mm for the narrow BIFROST disks
+ * and 1.3 mm for the bandwidth pair, worth 0.006 and 0.067 degrees of aperture. The
+ * header's is the more conservative of the two by that margin. They are the same
+ * quantity, computed against the two different inner boundaries those conventions
+ * describe; this one matches the disks as the instrument defines them.
+ *
+ * Taking the width over the beam-crossing radius instead, `window_width / beam_centre`,
+ * misses the height entirely and comes out low -- 11.4 degrees against 13.4 for the
+ * BIFROST bandwidth disks.
+ *
+ * @param radius Disk radius, m
+ * @param slit_height Radial extent of the opening cut in the disk, m
+ * @param window_width Width of the beam where it crosses the disk, m
+ * @param window_height Radial extent of that beam, m
+ * @return The angular width of the beam on the disk, in degrees
+ */
+inline double beam_aperture(const double radius, const double slit_height,
+                            const double window_width, const double window_height) {
+  if (window_width <= 0) return 0.0;
+  const double beam_centre = radius - slit_height / 2.0;
+  const double inner = beam_centre - window_height / 2.0;
+  if (inner <= 0) {
+    throw std::invalid_argument(
+        "A beam window " + std::to_string(window_height) + " m deep inside a "
+        + std::to_string(slit_height) + " m slit on a " + std::to_string(radius)
+        + " m disk reaches the spindle; there is no radius to take an aperture at.");
+  }
+  return 2.0 * constants::DEGREES_PER_TURN / 2.0 / constants::PI
+         * std::atan2(window_width / 2.0, inner);
+}
 
 /** A disk chopper, owning its slit edges.
  *

@@ -43,6 +43,13 @@ static void bind_constants(nb::module_ &m) {
     constants.attr("FRAME_OVERLAP_2_ANGLE") = c::FRAME_OVERLAP_2_ANGLE;
     constants.attr("BANDWIDTH_ANGLE") = c::BANDWIDTH_ANGLE;
     constants.attr("DEGREES_PER_TURN") = c::DEGREES_PER_TURN;
+    constants.attr("DISK_RADIUS") = c::DISK_RADIUS;
+    constants.attr("NARROW_WINDOW_WIDTH") = c::NARROW_WINDOW_WIDTH;
+    constants.attr("NARROW_WINDOW_HEIGHT") = c::NARROW_WINDOW_HEIGHT;
+    constants.attr("NARROW_SLIT_HEIGHT") = c::NARROW_SLIT_HEIGHT;
+    constants.attr("BANDWIDTH_WINDOW_WIDTH") = c::BANDWIDTH_WINDOW_WIDTH;
+    constants.attr("BANDWIDTH_WINDOW_HEIGHT") = c::BANDWIDTH_WINDOW_HEIGHT;
+    constants.attr("BANDWIDTH_SLIT_HEIGHT") = c::BANDWIDTH_SLIT_HEIGHT;
 }
 
 NB_MODULE(_chopcal_impl, m) {
@@ -53,8 +60,9 @@ nb::module_::import_("chopcal._chopper_lib_impl");
 
 bind_constants(m);
 m.def("bifrost", &bifrost, "energy_min"_a=0, "wavelength_max"_a=0, "shaping_time"_a=0.0002,
-      "Chopper settings for BIFROST, as a speed, delay, slit edges and flight path for\n"
-      "each of its six choppers.\n\n"
+      "apertures"_a=true,
+      "Chopper settings for BIFROST, as a speed, delay, slit edges, flight path and beam\n"
+      "aperture for each of its six choppers.\n\n"
       "The band is a fixed ~1.77 angstrom wide, so one number places it: either the\n"
       "longest wavelength (angstrom) or the lowest energy (meV) to pass, the band\n"
       "running from there to ~1.77 angstrom shorter. A positive wavelength_max wins\n"
