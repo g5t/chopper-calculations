@@ -46,10 +46,15 @@ static void bind_constants(nb::module_ &m) {
 }
 
 NB_MODULE(_chopcal_impl, m) {
+// `bifrost` hands back `Chopper`s, which are bound in the sibling module. nanobind shares
+// type registrations between modules, but only once the module that owns the type has
+// been imported; make that a real dependency rather than an accident of import order.
+nb::module_::import_("chopcal._chopper_lib_impl");
+
 bind_constants(m);
 m.def("bifrost", &bifrost, "energy_min"_a=0, "wavelength_max"_a=0, "shaping_time"_a=0.0002,
-      "Chopper settings for BIFROST, as a speed, delay, opening angle and flight path\n"
-      "for each of its six choppers.\n\n"
+      "Chopper settings for BIFROST, as a speed, delay, slit edges and flight path for\n"
+      "each of its six choppers.\n\n"
       "The band is a fixed ~1.77 angstrom wide, so one number places it: either the\n"
       "longest wavelength (angstrom) or the lowest energy (meV) to pass, the band\n"
       "running from there to ~1.77 angstrom shorter. A positive wavelength_max wins\n"

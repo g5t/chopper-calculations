@@ -4,22 +4,17 @@
 #include <cmath>
 #include <cstdio>
 #include <vector>
-#include <chopper-lib.h>
 #include "choppers.h"
 #include "constants.h"
 
-// The chopper structure is a run of doubles, so a library that means something else by
-// its second field would accept these settings and quietly answer a different question.
-#if !defined(CHOPPER_LIB_VERSION) || CHOPPER_LIB_VERSION < 20000
-#error "chopcal sets chopper delays in seconds; chopper-lib 2.0.0 or newer is required"
-#endif
+// chopper.h asserts the library version; these settings are delays in seconds and
+// single openings centred on the beam, which is what 4.x describes with beam=0.
 
 using namespace chopcal::constants;
+using chopcal::Chopper;
 
 auto bifrost(double E_0, double L_0, double chopPulseOpening)
--> std::map<std::string, chopper_parameters>
-//-> std::map<std::string, std::map<std::string, double>>
-//std::map<std::string, double>
+-> std::map<std::string, Chopper>
 {
 // Transferred parameters
     double chopPulseFrequencyOrder=SOURCE_FREQUENCY; // Number of chopper pulses pr moderator pulse. It will automatically be reduced when nesesary and a warning will be written in the promt.
@@ -101,13 +96,24 @@ auto bifrost(double E_0, double L_0, double chopPulseOpening)
     // there. Stated as a phase this needed the reader to know that chopper-lib divided
     // by the magnitude of the speed, so that the same positive angle meant the same
     // positive time for either sign.
-    std::map<std::string, chopper_parameters> cpm;
-    cpm["ps1"] = {.speed=chopPulseSpeed, .delay=chopPulseDelay, .angle=PULSE_SHAPING_ANGLE, .path=chopPulseDist};
-    cpm["ps2"] = {.speed=chopPulseSpeed, .delay=chopPulse2Delay, .angle=PULSE_SHAPING_ANGLE, .path=chopPulseDist + PAIR_SEPARATION};
-    cpm["fo1"] = {.speed=SOURCE_FREQUENCY, .delay=chopFrameOverlap1Offset, .angle=FRAME_OVERLAP_1_ANGLE, .path=chopFrameOverlap1Pos};
-    cpm["fo2"] = {.speed=SOURCE_FREQUENCY, .delay=chopFrameOverlap2Offset, .angle=FRAME_OVERLAP_2_ANGLE, .path=chopFrameOverlap2Pos};
-    cpm["bw1"] = {.speed=SOURCE_FREQUENCY, .delay=chopBWOffset, .angle=BANDWIDTH_ANGLE, .path=chopBWPos};
-    cpm["bw2"] = {.speed=-SOURCE_FREQUENCY, .delay=chopBWOffset, .angle=BANDWIDTH_ANGLE, .path=chopBWPos + PAIR_SEPARATION};
+    //
+    // Every one of these is a single opening centred on the beam, which `Chopper::centred`
+    // writes as beam=0 and edges={-w/2, +w/2} -- the pair chopper-lib built for itself in
+    // `single_to_multi_chopper` before 4.0.0 asked the caller for the disk's own numbers.
+    // The band this train passes is therefore unchanged by the migration, to within the
+    // rounding of a reassociated edge-time expression.
+    //
+    // The aperture is left at zero: that is the point beam the older structure always
+    // described, and chopcal holds no disk radius or window size to compute a real one
+    // from. See the aperture note in chopper-lib's header for the conversion.
+    constexpr double POINT_BEAM = 0.0;
+    std::map<std::string, Chopper> cpm;
+    cpm["ps1"] = Chopper::centred(chopPulseSpeed, chopPulseDelay, PULSE_SHAPING_ANGLE, chopPulseDist, POINT_BEAM);
+    cpm["ps2"] = Chopper::centred(chopPulseSpeed, chopPulse2Delay, PULSE_SHAPING_ANGLE, chopPulseDist + PAIR_SEPARATION, POINT_BEAM);
+    cpm["fo1"] = Chopper::centred(SOURCE_FREQUENCY, chopFrameOverlap1Offset, FRAME_OVERLAP_1_ANGLE, chopFrameOverlap1Pos, POINT_BEAM);
+    cpm["fo2"] = Chopper::centred(SOURCE_FREQUENCY, chopFrameOverlap2Offset, FRAME_OVERLAP_2_ANGLE, chopFrameOverlap2Pos, POINT_BEAM);
+    cpm["bw1"] = Chopper::centred(SOURCE_FREQUENCY, chopBWOffset, BANDWIDTH_ANGLE, chopBWPos, POINT_BEAM);
+    cpm["bw2"] = Chopper::centred(-SOURCE_FREQUENCY, chopBWOffset, BANDWIDTH_ANGLE, chopBWPos + PAIR_SEPARATION, POINT_BEAM);
 
     return cpm;
 }

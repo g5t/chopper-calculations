@@ -141,7 +141,7 @@ class ChopperTestCase(unittest.TestCase):
         chopper = self.settings['bw2']
         text = repr(chopper)
         self.assertNotIn('0x', text)
-        for field in ('speed', 'delay', 'angle', 'path'):
+        for field in ('speed', 'delay', 'beam', 'edges', 'path', 'aperture'):
             self.assertIn(field, text)
         # the values are exact, not rounded for display
         self.assertIn(repr(chopper.delay), text)
@@ -163,13 +163,22 @@ class QuantitiesTestCase(unittest.TestCase):
         from chopcal import bifrost
         self.settings = bifrost(energy_min=4.5)
 
-    def test_a_chopper_gives_its_four_fields_with_units(self):
+    def test_a_chopper_gives_its_fields_with_units(self):
         quantities = self.settings['ps1'].quantities
-        self.assertEqual(set(quantities), {'speed', 'delay', 'angle', 'path'})
+        self.assertEqual(set(quantities),
+                         {'speed', 'delay', 'beam', 'edges', 'path', 'aperture'})
         self.assertEqual(str(quantities['speed'].unit), 'Hz')
         self.assertEqual(str(quantities['delay'].unit), 's')
-        self.assertEqual(str(quantities['angle'].unit), 'deg')
+        self.assertEqual(str(quantities['beam'].unit), 'deg')
+        self.assertEqual(str(quantities['edges'].unit), 'deg')
         self.assertEqual(str(quantities['path'].unit), 'm')
+        self.assertEqual(str(quantities['aperture'].unit), 'deg')
+
+    def test_the_edges_come_back_as_an_array_not_a_scalar(self):
+        """A disk has two edges per opening, so this one field is not a single number."""
+        edges = self.settings['ps1'].quantities['edges']
+        self.assertEqual(edges.dims, ('edge',))
+        self.assertEqual(edges.values.tolist(), list(self.settings['ps1'].edges))
 
     def test_they_are_the_same_numbers_the_attributes_hold(self):
         """The table prints delays in milliseconds; the attribute is in seconds.

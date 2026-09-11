@@ -41,7 +41,7 @@ if (NOT SKBUILD)
 endif()
 
 include(fetcher)
-git_fetch(chopper_lib 2.0.0 https://github.com/mcdotstar/mcstas-chopper-lib.git False)
+git_fetch(chopper_lib 4.1.0 https://github.com/mcdotstar/mcstas-chopper-lib.git False)
 
 # Import nanobind through CMake's find_package mechanism
 find_package(nanobind CONFIG REQUIRED)
@@ -68,6 +68,19 @@ nanobind_add_module(_chopper_lib_impl
         ${chopper_lib_SOURCE_DIR}/chopper-lib.c
 )
 target_include_directories(_chopper_lib_impl PRIVATE ${chopper_lib_SOURCE_DIR})
+
+# chopper-lib.c refuses to compile without V2K, K2V and PI since 4.0.0; it used to define
+# its own behind #ifndef. These are the McStas runtime's values, cached by the library for
+# consumers like this one, which compile the source into a target of their own rather than
+# linking chopper_lib. They are deliberately not chopcal::constants -- those are derived
+# from SI/CODATA, and agreeing with McStas is the point of these.
+#
+# On the source file rather than the targets, because chopcal::constants declares
+# variables named PI, V2K and K2V: as target definitions these macros reach the C++ too
+# and mangle every one of those declarations. Only the C file needs them, and this is the
+# same reason chopper-lib's own CMakeLists keeps them PRIVATE.
+set_source_files_properties(${chopper_lib_SOURCE_DIR}/chopper-lib.c PROPERTIES
+        COMPILE_DEFINITIONS "${CHOPPER_LIB_DEFINITIONS}")
 
 # Install directive for scikit-build-core
 install(TARGETS _chopcal_impl LIBRARY DESTINATION chopcal)

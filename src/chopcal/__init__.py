@@ -50,23 +50,30 @@ def bifrost(energy_min=None, wavelength_max=None, shaping_time=2e-4):
     chopcal.lib.ChopperSet
         The six choppers by name, in beam order -- ``ps1`` and ``ps2`` shaping the pulse,
         ``fo1`` and ``fo2`` suppressing frame overlap, ``bw1`` and ``bw2`` cutting the
-        band -- each a :class:`~chopcal.lib.Chopper` of ``speed``, ``delay``, ``angle``
-        and ``path``. Feed ``.values()`` to :func:`chopcal.lib.wavelength_limits` to see
-        what the train actually passes.
+        band -- each a :class:`~chopcal.lib.Chopper` of ``speed``, ``delay``, ``beam``,
+        ``edges``, ``path`` and ``aperture``. Feed ``.values()`` to
+        :func:`chopcal.lib.wavelength_limits` to see what the train actually passes.
+
+        Every one is a single opening centred on the beam, so ``beam`` is 0 and ``edges``
+        is ``[-width/2, +width/2]`` -- what the ``angle`` field of chopper-lib 2.x meant,
+        said in the terms 4.x uses. ``aperture`` is 0, the point beam that field also
+        described; chopcal holds no disk geometry to compute a real one from.
 
     Examples
     --------
     >>> settings = bifrost(wavelength_max=3.0)                  # doctest: +SKIP
     >>> settings                                                # doctest: +SKIP
-    name  speed [Hz]  delay [ms]  opening [deg]  open [ms]  path [m]
-     ps1         196     3.87771            170      2.409     6.342
-     ps2         196       6.087            170      2.409     6.362
-     fo1          14     6.13892          38.26      7.591      8.53
-     fo2          14     9.54467          52.01      10.32    14.973
-     bw1          14     42.8605            161      31.94        78
-     bw2         -14     42.8605            161      31.94     78.02
+    name  speed [Hz]  delay [ms]  beam [deg]  opening [deg]  open [ms]  path [m]
+     ps1         196      3.8781           0            170      2.409     6.342
+     ps2         196      6.0874           0            170      2.409     6.362
+     fo1          14     6.13997           0          38.26      7.591      8.53
+     fo2          14     9.54764           0          52.01      10.32    14.973
+     bw1          14     42.8823           0            161      31.94        78
+     bw2         -14     42.8823           0            161      31.94     78.02
     >>> settings['bw1'].delay                                   # doctest: +SKIP
-    0.042860481...
+    0.04288227...
+    >>> settings['bw1'].edges                                   # doctest: +SKIP
+    [-80.5, 80.5]
     """
     if not energy_min and not wavelength_max:
         raise ValueError(
