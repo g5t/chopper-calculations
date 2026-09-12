@@ -3,3 +3,6 @@ build/
 venv/
 __pycache__/
 *.egg-info/
+site/
+.cache/
+uv.lock

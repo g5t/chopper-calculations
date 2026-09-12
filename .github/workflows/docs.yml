@@ -1,0 +1,66 @@
+name: Documentation
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0          # setuptools_scm reads the tags for the version
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+    - uses: actions/configure-pages@v5
+
+    # Installed normally, not with -e. chopcal is half compiled, and mkdocstrings has to
+    # import the extension to document what `chopcal.lib` re-exports from it; an editable
+    # install splits the package across src/ and site-packages, and griffe then finds the
+    # Python half without the extension and resolves none of those names.
+    - name: Install chopcal and the documentation toolchain
+      run: pip install ".[docs,test]"
+
+    # The site's examples are executable modules asserting their own claims. Running them
+    # here as well as in the test job means broken documentation fails the job that
+    # publishes documentation, not only the one that runs tests.
+    - name: Verify the examples
+      run: pytest test/test_docs_examples.py -q
+
+    # --strict turns unresolved references and dead links into a non-zero exit
+    - name: Build the site
+      run: zensical build --clean --strict
+
+    - uses: actions/upload-pages-artifact@v3
+      with:
+        path: site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    # Pull requests and feature branches build only; the artifact on the run summary is
+    # the preview. Publishing happens from main.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+    - uses: actions/deploy-pages@v4
+      id: deployment
