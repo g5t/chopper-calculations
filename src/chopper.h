@@ -18,8 +18,14 @@ extern "C" {
 // The structure gained a pointer and a count in 4.0.0, and `edges` mean something
 // different from the `windows` they replaced. A build against an older library would
 // fail on the field names anyway, but say why.
-#if !defined(CHOPPER_LIB_VERSION) || CHOPPER_LIB_VERSION < 40200
-#error "chopcal describes disks by their slit edges and builds transmitted regions as polygons; chopper-lib 4.2.0 or newer is required"
+// 4.2.1 rather than 4.2.0, which has the polygons but merges overlapping ranges wrongly:
+// it loses the extent of a range containing the one after it, and leaves the answer to
+// whichever order `qsort` puts tied lower edges in, which is not fixed across platforms.
+// `wavelength_windows` on a real train therefore returned a different band on Windows
+// than on Linux. Nothing here calls the broken function directly, so this guard is the
+// only thing standing between a caller and a platform-dependent answer.
+#if !defined(CHOPPER_LIB_VERSION) || CHOPPER_LIB_VERSION < 40201
+#error "chopcal builds transmitted regions as polygons, and needs range merging that does not depend on the platform's qsort; chopper-lib 4.2.1 or newer is required"
 #endif
 
 namespace chopcal {
@@ -155,7 +161,7 @@ struct Chopper {
   /** The library's view of this disk.
    *
    * `chopper_parameters::edges` is `double *` rather than `const double *`; every use of
-   * it in chopper-lib 4.1.0 is a read, so the cast is safe, and it lives here rather than
+   * it in chopper-lib 4.2.1 is a read, so the cast is safe, and it lives here rather than
    * at each call site so there is one place to check that claim against a new release.
    */
   [[nodiscard]] chopper_parameters c_struct() const {

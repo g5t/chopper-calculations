@@ -286,7 +286,9 @@ Nothing else changes: the same sources are compiled into the extension modules, 
 modification to `chopper-lib.c` shows up in `chopcal` on the next build. `chopper-lib`
 carries a `CHOPPER_LIB_VERSION` macro and `src/chopper.h` asserts on it, so building
 against a version that means something else by a chopper's fields fails rather than
-returning different numbers. `chopcal` needs 4.1.0 or newer.
+returning different numbers. `chopcal` needs **4.2.1 or newer** — 4.2.0 has the polygons
+but merges overlapping ranges in a way that depends on the platform's `qsort`, so
+`wavelength_windows` on a real train answered differently on Windows than on Linux.
 
 Only `chopper-lib.c` is compiled with `CHOPPER_LIB_DEFINITIONS`, not the whole target:
 those are `V2K`, `K2V` and `PI` as macros, and `chopcal::constants` declares C++ variables
