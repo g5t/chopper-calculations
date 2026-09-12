@@ -121,3 +121,77 @@ def test_regions_are_balanced():
         ends = [name for edge, name in edges if edge == 'end']
         assert sorted(starts) == sorted(ends), f'{path.name} has unbalanced regions'
         assert len(starts) == len(set(starts)), f'{path.name} repeats a region name'
+
+# --- the pages only use Markdown the configuration actually enables -------------------
+#
+# A feature whose extension is not loaded does not fail the build: `:material-wrench:`
+# renders as the literal text `:material-wrench:`, an admonition renders as a paragraph
+# beginning `!!!`, and the site publishes looking wrong. That is how the icons on the home
+# page reached production. These check the sources against zensical.toml instead of the
+# built HTML, so they need no build.
+
+FEATURES = (
+    (re.compile(r':(?:material|fontawesome|octicons|simple)-[a-z0-9-]+:'),
+     'pymdownx.emoji', 'icon shortcodes'),
+    (re.compile(r'^\s*!!!\s', re.M), 'admonition', 'admonitions'),
+    (re.compile(r'^\s*\?\?\?\s', re.M), 'pymdownx.details', 'collapsible admonitions'),
+    (re.compile(r'^\s*--8<--\s', re.M), 'pymdownx.snippets', 'snippet includes'),
+    (re.compile(r'^\s*\|.+\|\s*$', re.M), 'tables', 'tables'),
+    (re.compile(r'<[a-z]+[^>]*\bmarkdown\b'), 'md_in_html', 'Markdown inside HTML'),
+    (re.compile(r'^\s*=== "', re.M), 'pymdownx.tabbed', 'content tabs'),
+    (re.compile(r'^\s*```mermaid', re.M), 'pymdownx.superfences', 'mermaid diagrams'),
+)
+
+ICON = re.compile(r':((?:material|fontawesome|octicons|simple)-[a-z0-9-]+):')
+
+
+def enabled_extensions():
+    """Every extension named in zensical.toml, as dotted names.
+
+    Dotted TOML keys nest, so `pymdownx.emoji.emoji_index` arrives as
+    {'pymdownx': {'emoji': {'emoji_index': ...}}}; flatten it back.
+    """
+    import tomllib
+    with open(ROOT / 'zensical.toml', 'rb') as file:
+        config = tomllib.load(file)
+    names = set()
+
+    def walk(mapping, prefix=()):
+        for key, value in mapping.items():
+            path = (*prefix, key)
+            names.add('.'.join(path))
+            if isinstance(value, dict):
+                walk(value, path)
+
+    walk(config['project']['markdown_extensions'])
+    return names
+
+
+@docs_present
+@pytest.mark.parametrize('page', page_paths(), ids=lambda p: str(p.relative_to(DOCS)))
+def test_page_only_uses_enabled_markdown(page):
+    enabled = enabled_extensions()
+    text = page.read_text()
+    for pattern, extension, description in FEATURES:
+        match = pattern.search(text)
+        if match is None:
+            continue
+        assert any(name.startswith(extension) for name in enabled), (
+            f'{page.relative_to(DOCS)} uses {description} ({match.group(0).strip()!r}) but '
+            f'{extension} is not enabled in zensical.toml, so it will render as literal '
+            f'text in a build that still succeeds')
+
+
+@docs_present
+def test_every_icon_shortcode_names_a_real_icon():
+    """A misspelled icon renders as its own shortcode, and the build says nothing."""
+    zensical = pytest.importorskip('zensical', reason='needs the documentation toolchain')
+    icons = Path(zensical.__file__).parent / 'templates' / '.icons'
+    if not icons.is_dir():
+        pytest.skip('this zensical does not ship an icon set where expected')
+    for page in page_paths():
+        for match in ICON.finditer(page.read_text()):
+            family, _, name = match.group(1).partition('-')
+            assert (icons / family / f'{name}.svg').is_file(), (
+                f'{page.relative_to(DOCS)} uses :{match.group(1)}:, which is not in '
+                f'{icons}/{family}')
