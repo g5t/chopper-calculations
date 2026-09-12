@@ -21,6 +21,9 @@ Exposes chopper calculations to Python which were otherwise hidden in McStas ins
 |                 | allowed (inverse velocity, time) bins                           | `chopcal.lib.inverse_velocity_time_mask` | function |
 |                 | the allowed fraction of a signal                                | `chopcal.lib.unmasked_probability`     | function  |
 |                 | direct sampling over a finished mask                            | `chopcal.lib.MaskSampler`              | class     |
+|                 | the exact transmitted region                                    | `chopcal.lib.Region`                   | class     |
+|                 | one convex piece of it                                          | `chopcal.lib.Polygon`                  | class     |
+|                 | direct sampling over that region                                | `chopcal.lib.RegionSampler`            | class     |
 
 
 ## Placing the band
@@ -152,8 +155,86 @@ agree nothing gets through — a brute-force scan over emission time, an exact i
 intersection, and `inverse_velocity_time_mask`, which keeps the two coordinates coupled and
 cannot make the error.
 
-So: where the mask and the windows disagree, the mask is right. `test_mask.py` records
-this one.
+So: where the mask and the windows disagree, the mask is right — and
+[`Region`](#the-transmitted-region-exactly) is righter still, being neither projected nor
+quantised. `test_mask.py` records this one.
+
+## The transmitted region, exactly
+
+`wavelength_windows` over-reports and `inverse_velocity_time_mask` quantises. Since
+chopper-lib 4.2.0 the region a train actually transmits can be built instead, as a union
+of convex polygons in (inverse velocity, emission time):
+
+```pycon
+>>> import chopcal
+>>> from chopcal.lib import Region
+>>> train = list(chopcal.bifrost(wavelength_max=3.0).values())
+>>> source = Region.from_wavelengths(0.4, 45.0, 0.0, 3e-3)   # AA, AA, s, s
+>>> region = source.transmit(train)
+>>> len(region), [len(p) for p in region.polygons]
+(1, [5])
+>>> region.wavelength_ranges()
+[(1.145836, 3.051543)]
+>>> region.area / source.area          # the acceptance, exactly
+0.003929118918304158
+```
+
+A neutron emitted at inverse velocity `a` and time `t` reaches path `L` at `t + L*a`, so a
+disc open on `[lower, upper]` accepts `lower <= t + L*a <= upper` — a slab between two
+parallel lines. A train's acceptance is an intersection of unions of such slabs, and
+intersection distributes over union, so the region *is* a union of convex pieces: one per
+choice of which opening and which turn of each disc a neutron goes through. Nothing is
+approximated, and for the six BIFROST discs it comes out as a single polygon of five
+vertices.
+
+`transmit` returns a new `Region` and leaves the one it was asked of alone, so a source
+rectangle can be reused.
+
+The same train through `wavelength_windows` reports that band **and** a 0.03 Å sliver near
+38 Å that nothing passes — see [the caveat above](#the-band-list-and-a-caveat). The region
+does not, because it never separates the two coordinates.
+
+### A guide that is not a straight line
+
+`transmit` takes one extra flight path per chopper, in metres, for a guide in which a
+neutron travels further than the straight line. The deviation is in *path*, so its effect
+on an arrival time is `deviation * inverse_velocity` — larger for a slow neutron, and
+nothing at all to the inverse velocity — so it does not grow the region evenly; it opens
+each slab into a wedge:
+
+```pycon
+>>> spread = [1e-4 * chopper.path for chopper in train]
+>>> source.transmit(train, spread).wavelength_ranges()
+[(1.145722, 3.051543)]
+```
+
+Only the slow edge moves: a longer route rescues a neutron that would have arrived early
+and can do nothing for one arriving late. Like `Chopper.aperture` it gives the *support*
+under that uncertainty rather than a distribution over it. A spread wide enough to reach
+from one turn of a disc into the next would make the transmitted pieces overlap and their
+areas count twice; that raises rather than returning a number.
+
+### Sampling it
+
+```pycon
+>>> sampler = region.sampler(source.area)
+>>> sampler.count, sampler.acceptance
+(3, 0.0039291189183041555)
+>>> inverse_velocity, time = sampler.sample(100_000)    # needs numpy
+```
+
+The same job as `MaskSampler` and the same shape — three uniform deviates, one binary
+search, never rejects — over the exact region. `acceptance` here is exact: both areas are
+known in closed form rather than counted in cells, where the grid can only over-estimate,
+since a partly covered cell is weighted whole.
+
+### Writing it out
+
+`region.to_dict(sampled=source)` gives plain data; `region.write_json(path, sampled=source)`
+writes the same thing to a file, byte for byte what the `Polygon_ESS_butterfly` McStas
+component writes beside its data. Every number carries enough digits to read back
+bit-exact, and the file is a few hundred bytes where a mask of any useful resolution is
+megabytes.
 
 ## Describing a disk's beam
 
@@ -176,6 +257,19 @@ instead misses the height entirely: 11.4° where the real figure is 13.4°.
 `apertures=False` for the pencil beam every release before this one described, and the
 narrower band that went with it — `BIFROST_BANDWIDTH_POINT_BEAM` rather than
 `BIFROST_BANDWIDTH`.
+
+## Which of the three to reach for
+
+| you want | use |
+|---|---|
+| the band an instrument passes, quickly | `wavelength_windows` — an over-estimate, tight wherever the discs leave wide overlapping windows |
+| a picture on a fixed grid | `inverse_velocity_time_mask` |
+| the region itself, its area, or an unbiased sampler | `Region` |
+
+`Region` is exact and the other two are not, so it is the right default for anything that
+feeds a number into a calculation. The window functions stay the cheapest way to ask
+whether a train passes roughly the band you meant, and the mask stays the one that gives
+you an array to plot.
 
 ## Developing
 

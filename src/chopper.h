@@ -18,8 +18,8 @@ extern "C" {
 // The structure gained a pointer and a count in 4.0.0, and `edges` mean something
 // different from the `windows` they replaced. A build against an older library would
 // fail on the field names anyway, but say why.
-#if !defined(CHOPPER_LIB_VERSION) || CHOPPER_LIB_VERSION < 40100
-#error "chopcal describes disks by their slit edges and samples finished masks; chopper-lib 4.1.0 or newer is required"
+#if !defined(CHOPPER_LIB_VERSION) || CHOPPER_LIB_VERSION < 40200
+#error "chopcal describes disks by their slit edges and builds transmitted regions as polygons; chopper-lib 4.2.0 or newer is required"
 #endif
 
 namespace chopcal {

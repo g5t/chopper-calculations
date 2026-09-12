@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -7,6 +8,9 @@
 
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
+#include <nanobind/stl/optional.h>
+#include <nanobind/stl/string.h>
+#include <nanobind/stl/unique_ptr.h>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/tuple.h>
 #include <nanobind/stl/pair.h>
@@ -148,6 +152,179 @@ class MaskSampler {
       chopper_mask_sampler_draw(&sampler_, cell_deviates.data()[i],
                                 inverse_velocity_deviates.data()[i],
                                 time_deviates.data()[i], &inverse_velocity[i], &time[i]);
+    }
+    return {std::move(inverse_velocity), std::move(time)};
+  }
+};
+
+/** chopper-lib's transmitted region, owning the polygons it holds.
+ *
+ * `chopper_polygon_set` is a count and a pointer with a `_free`; this ties them to a
+ * Python object's lifetime. A `chopper_polygon` needs no such treatment -- it is a
+ * fixed-size value -- so it is bound as it stands.
+ */
+class Region {
+  chopper_polygon_set set_;
+
+  void append(const chopper_polygon_set & other) {
+    for (unsigned i = 0; i < other.count; ++i) {
+      if (!chopper_polygon_set_add(&set_, &other.polygon[i])) {
+        throw std::runtime_error("Out of memory copying a transmitted region");
+      }
+    }
+  }
+
+ public:
+  Region() : set_(chopper_polygon_set_empty()) {}
+  Region(const Region & other) : set_(chopper_polygon_set_empty()) { append(other.set_); }
+  Region & operator=(const Region & other) {
+    if (this != &other) {
+      chopper_polygon_set_free(&set_);
+      append(other.set_);
+    }
+    return *this;
+  }
+  ~Region() { chopper_polygon_set_free(&set_); }
+
+  /// The rectangle a source draws from, which is where every region starts.
+  static Region rectangle(const double inverse_velocity_minimum,
+                          const double inverse_velocity_range,
+                          const double time_minimum, const double time_range) {
+    if (!(inverse_velocity_range > 0) || !(time_range > 0)) {
+      throw std::invalid_argument(
+          "A source rectangle needs a positive width in both coordinates; got "
+          + std::to_string(inverse_velocity_range) + " s/m by "
+          + std::to_string(time_range) + " s");
+    }
+    Region region;
+    const chopper_polygon polygon = chopper_polygon_rectangle(
+        inverse_velocity_minimum, inverse_velocity_range, time_minimum, time_range);
+    if (!chopper_polygon_set_add(&region.set_, &polygon)) {
+      throw std::runtime_error("Out of memory building a source rectangle");
+    }
+    return region;
+  }
+
+  [[nodiscard]] const chopper_polygon_set & raw() const { return set_; }
+  [[nodiscard]] unsigned count() const { return set_.count; }
+  [[nodiscard]] double area() const { return chopper_polygon_set_area(&set_); }
+
+  [[nodiscard]] std::vector<chopper_polygon> polygons() const {
+    return {set_.polygon, set_.polygon + set_.count};
+  }
+
+  [[nodiscard]] bool contains(const double inverse_velocity, const double time) const {
+    return chopper_polygon_set_contains(&set_, inverse_velocity, time) != 0;
+  }
+
+  /// What is left of this region after a train. A new region; this one is unchanged.
+  [[nodiscard]] Region transmit(const std::vector<Chopper> & choppers,
+                                const std::vector<double> & path_spreads) const {
+    if (!path_spreads.empty() && path_spreads.size() != choppers.size()) {
+      throw std::invalid_argument(
+          "One path spread per chopper, or none at all; got "
+          + std::to_string(path_spreads.size()) + " for "
+          + std::to_string(choppers.size()) + " choppers");
+    }
+    Region out(*this);
+    const auto pars = chopcal::c_structs(choppers);
+    if (!chopper_polygon_set_transmit_train(
+            &out.set_, static_cast<unsigned>(pars.size()), pars.data(),
+            path_spreads.empty() ? nullptr : path_spreads.data())) {
+      throw std::runtime_error(
+          "chopper-lib refused to transmit this region and printed the reason: either a "
+          "path spread wide enough to make one turn of a disk overlap the next, which "
+          "would make the transmitted areas count twice, or a polygon needing more "
+          "vertices than it has room for.");
+    }
+    return out;
+  }
+
+  [[nodiscard]] std::vector<std::pair<double, double>> inverse_velocity_ranges() const {
+    const range_set ranges = chopper_polygon_set_inverse_velocity_ranges(&set_);
+    std::vector<std::pair<double, double>> out;
+    out.reserve(ranges.count);
+    for (unsigned i = 0; i < ranges.count; ++i) {
+      out.emplace_back(ranges.ranges[i].minimum, ranges.ranges[i].maximum);
+    }
+    if (ranges.ranges) free(ranges.ranges);
+    return out;
+  }
+
+  [[nodiscard]] std::vector<std::pair<double, double>> wavelength_ranges() const {
+    auto out = inverse_velocity_ranges();
+    for (auto & band : out) {
+      band.first = inverse_velocity_to_wavelength(band.first);
+      band.second = inverse_velocity_to_wavelength(band.second);
+    }
+    return out;
+  }
+
+  void write_json(const std::string & path,
+                  const std::optional<chopper_polygon> & sampled) const {
+    /* The C splits a path into directory, name and extension and joins them back; give it
+     * the whole thing as the name and nothing else, so what lands on disk is exactly the
+     * path asked for. */
+    if (!chopper_write_polygons_to_file(nullptr, path.c_str(), nullptr, "/", &set_,
+                                        sampled ? &*sampled : nullptr)) {
+      throw std::runtime_error("Could not open " + path + " for writing");
+    }
+  }
+};
+
+/** chopper-lib's sampler over a transmitted region, owning what it allocated. */
+class RegionSampler {
+  chopper_polygon_sampler sampler_{};
+
+ public:
+  RegionSampler(const Region & region, const double sampled_area) {
+    chopper_polygon_sampler_empty(&sampler_);
+    if (!(sampled_area > 0.0)) {
+      throw std::invalid_argument(
+          "The sampled area sets the acceptance, so it has to be positive; got "
+          + std::to_string(sampled_area));
+    }
+    sampler_ = chopper_polygon_sampler_make(&region.raw(), sampled_area);
+  }
+
+  RegionSampler(const RegionSampler &) = delete;
+  RegionSampler & operator=(const RegionSampler &) = delete;
+  ~RegionSampler() { chopper_polygon_sampler_free(&sampler_); }
+
+  [[nodiscard]] unsigned count() const { return sampler_.count; }
+  [[nodiscard]] double acceptance() const { return sampler_.acceptance; }
+
+  void require_triangles() const {
+    if (sampler_.count == 0) {
+      throw std::runtime_error(
+          "This sampler has no triangles to draw from: the region is empty. Check "
+          "`count` before drawing.");
+    }
+  }
+
+  [[nodiscard]] std::pair<double, double> draw(const double triangle_deviate,
+                                               const double first_deviate,
+                                               const double second_deviate) const {
+    require_triangles();
+    std::pair<double, double> out;
+    chopper_polygon_sampler_draw(&sampler_, triangle_deviate, first_deviate,
+                                 second_deviate, &out.first, &out.second);
+    return out;
+  }
+
+  [[nodiscard]] std::pair<std::vector<double>, std::vector<double>> draw_many(
+      const f64_1d & triangle_deviates, const f64_1d & first_deviates,
+      const f64_1d & second_deviates) const {
+    require_triangles();
+    const auto n = triangle_deviates.size();
+    if (first_deviates.size() != n || second_deviates.size() != n) {
+      throw std::invalid_argument("The three deviate arrays must be the same length");
+    }
+    std::vector<double> inverse_velocity(n), time(n);
+    for (size_t i = 0; i < n; ++i) {
+      chopper_polygon_sampler_draw(&sampler_, triangle_deviates.data()[i],
+                                   first_deviates.data()[i], second_deviates.data()[i],
+                                   &inverse_velocity[i], &time[i]);
     }
     return {std::move(inverse_velocity), std::move(time)};
   }
@@ -361,6 +538,142 @@ m.def("unmasked_probability",
       "and is not the weight correction a sampler needs; that is\n"
       "`MaskSampler.acceptance`, which counts draws rather than intensity."
 );
+
+m.attr("chopper_lib_version") = std::to_string(CHOPPER_LIB_VERSION_MAJOR) + "."
+                              + std::to_string(CHOPPER_LIB_VERSION_MINOR) + "."
+                              + std::to_string(CHOPPER_LIB_VERSION_PATCH);
+
+/* The library's own conversion, exposed so a caller converting by hand agrees with
+ * `wavelength_limits` and `Region.wavelength_ranges` exactly rather than in the eighth
+ * digit. These are the McStas runtime's numbers; chopcal.constants.V2K is derived from
+ * SI/CODATA and is deliberately a hair different.
+ *
+ * They are also not exact reciprocals of each other: the runtime rounds each literal on
+ * its own, and V2K * K2V is 0.99999999891, so converting a wavelength to an inverse
+ * velocity and back is 1.1e-9 short. chopcal.constants derives K2V as 1/V2K and does not
+ * have that; these are here to agree with the library, not to be self-consistent. */
+m.def("wavelength_to_inverse_velocity", &wavelength_to_inverse_velocity, "wavelength"_a,
+      "Angstrom to s/m, the way chopper-lib does it.");
+m.def("inverse_velocity_to_wavelength", &inverse_velocity_to_wavelength,
+      "inverse_velocity"_a, "s/m to angstrom, the way chopper-lib does it.");
+
+nb::class_<chopper_polygon>(m, "Polygon",
+      "One convex piece of a transmitted region, in (inverse velocity, time).\n\n"
+      "A value, not a handle: it owns nothing and copies freely. Its vertices are the\n"
+      "disc edges that bound it, at the precision of a double -- nothing here is sampled\n"
+      "onto a grid.")
+      .def_prop_ro("vertices",
+                   [](const chopper_polygon & polygon) {
+                     std::vector<std::pair<double, double>> out;
+                     out.reserve(polygon.count);
+                     for (unsigned i = 0; i < polygon.count; ++i) {
+                       out.emplace_back(polygon.vertex[i].inverse_velocity,
+                                        polygon.vertex[i].time);
+                     }
+                     return out;
+                   },
+                   "(inverse velocity, time) pairs in order, s/m and s")
+      .def_prop_ro("area", [](const chopper_polygon & p) { return chopper_polygon_area(&p); },
+                   "Area in s^2/m -- phase space, not a count")
+      .def("contains",
+           [](const chopper_polygon & p, double inverse_velocity, double time) {
+             return chopper_polygon_contains(&p, inverse_velocity, time) != 0;
+           },
+           "inverse_velocity"_a, "time"_a,
+           "Whether a point lies inside, its boundary counting as inside")
+      .def("__len__", [](const chopper_polygon & p) { return p.count; })
+      ;
+
+nb::class_<Region>(m, "Region",
+      "The region of (inverse velocity, emission time) a chopper train transmits.\n\n"
+      "A union of convex polygons, and exact: a neutron emitted at inverse velocity `a`\n"
+      "and time `t` reaches path `L` at `t + L*a`, so a disc open on [lower, upper]\n"
+      "accepts `lower <= t + L*a <= upper` -- a slab between two parallel lines. A\n"
+      "train's acceptance is an intersection of unions of such slabs, and intersection\n"
+      "distributes over union, so the region *is* a union of convex pieces: one per\n"
+      "choice of which opening and which turn of each disc a neutron goes through.\n\n"
+      "This is what `inverse_velocity_windows` and `inverse_velocity_time_mask`\n"
+      "approximate, each in its own direction. The window functions project each disc\n"
+      "separately and intersect the projections, which can report a band no single\n"
+      "emission time delivers. The mask quantises, losing channels thinner than a bin\n"
+      "and keeping partly covered bins whole. This does neither.\n\n"
+      "Start from `Region.rectangle`, the region a source draws from, and `transmit` it\n"
+      "through the train.")
+      .def(nb::init<>(), "An empty region, transmitting nothing.")
+      .def_static("rectangle", &Region::rectangle,
+                  "inverse_velocity_minimum"_a, "inverse_velocity_range"_a,
+                  "time_minimum"_a, "time_range"_a,
+                  "The rectangle a source draws from: inverse velocities in s/m by\n"
+                  "emission times in s. Both ranges must be positive.")
+      .def_prop_ro("polygons", &Region::polygons, "The convex pieces, as a list")
+      .def_prop_ro("area", &Region::area,
+                   "Total area in s^2/m. A plain sum: the pieces are disjoint, because\n"
+                   "two turns of one disc cannot both pass the same neutron.")
+      .def("contains", &Region::contains, "inverse_velocity"_a, "time"_a,
+           "Whether a neutron emitted at this (inverse velocity, time) gets through")
+      .def("transmit", &Region::transmit, "choppers"_a,
+           "path_spreads"_a = std::vector<double>{},
+           "What a train leaves of this region, as a new Region; this one is unchanged.\n\n"
+           "`path_spreads` is one extra flight path per chopper, in metres, for a guide\n"
+           "that is not a straight line. The deviation is in *path*, so its effect on an\n"
+           "arrival time is `deviation * inverse_velocity` -- larger for a slow neutron,\n"
+           "and nothing at all to the inverse velocity -- so it does not grow the region\n"
+           "evenly, it opens each slab into a wedge. It gives the *support* under that\n"
+           "uncertainty rather than a distribution over it, the same bargain\n"
+           "`Chopper.aperture` makes for the width of the beam.")
+      .def("inverse_velocity_ranges", &Region::inverse_velocity_ranges,
+           "The bands the region covers in inverse velocity, sorted and merged, s/m.\n\n"
+           "The projection of the intersection, where `inverse_velocity_windows` gives\n"
+           "the intersection of the projections -- a superset of this one.")
+      .def("wavelength_ranges", &Region::wavelength_ranges,
+           "The same bands in angstrom, converted as chopper-lib converts them.")
+      .def("sampler",
+           [](const Region & region, double sampled_area) {
+             return std::make_unique<RegionSampler>(region, sampled_area);
+           },
+           "sampled_area"_a,
+           "A sampler over this region, drawing uniformly and never rejecting.\n\n"
+           "`sampled_area` is the area of the region the caller draws from -- normally\n"
+           "the `area` of the source rectangle this was transmitted from -- and sets the\n"
+           "`acceptance`.")
+      .def("write_json", &Region::write_json, "path"_a,
+           "sampled"_a = nb::none(),
+           "Write the region to `path` as JSON, the same file the McStas component\n"
+           "`Polygon_ESS_butterfly` writes: the polygons' vertices, the area, the bands\n"
+           "and the acceptance, each number with enough digits to read back bit-exact.\n\n"
+           "`sampled` is the source rectangle's single polygon, which sets `acceptance`;\n"
+           "without it both that and `sampled` are written as null. Use `to_dict` for a\n"
+           "region in memory -- this exists so a Python caller can produce byte-identical\n"
+           "output to the component.")
+      .def("__len__", &Region::count)
+      .def("__bool__", [](const Region & r) { return r.count() != 0; })
+      ;
+
+nb::class_<RegionSampler>(m, "RegionSampler",
+      "Draws (inverse velocity, time) pairs uniformly from a transmitted region.\n\n"
+      "The same job as `MaskSampler` and the same shape -- three uniform deviates, one\n"
+      "binary search, never rejects -- over the exact region rather than a grid\n"
+      "approximation of it. Each polygon is fanned into triangles from its first vertex,\n"
+      "so `count` here is triangles, not polygons.")
+      .def(nb::init<const Region &, double>(), "region"_a, "sampled_area"_a)
+      .def_prop_ro("count", &RegionSampler::count,
+                   "Triangles this draws from; 0 means nothing to draw")
+      .def_prop_ro("acceptance", &RegionSampler::acceptance,
+              "The factor every drawn ray's weight must be multiplied by.\n\n"
+              "Exact: the transmitted area over the sampled area, both in closed form\n"
+              "rather than counted in cells. `MaskSampler.acceptance` estimates the same\n"
+              "number on a grid and can only over-estimate it, since a partly covered\n"
+              "cell is weighted whole.\n\n"
+              "Everything the note on `MaskSampler.acceptance` says about independence\n"
+              "still applies: the correction is right only while both coordinates are\n"
+              "drawn uniformly and independently of each other and of everything else.")
+      .def("draw", &RegionSampler::draw,
+           "triangle_deviate"_a, "first_deviate"_a, "second_deviate"_a,
+           "One (inverse_velocity, time) pair from three uniform deviates on [0, 1).")
+      .def("draw_many", &RegionSampler::draw_many,
+           "triangle_deviates"_a, "first_deviates"_a, "second_deviates"_a,
+           "The same draw over three equal-length arrays, returning two lists.")
+      ;
 
 nb::class_<MaskSampler>(m, "MaskSampler",
       "Draws (inverse velocity, time) pairs from the allowed cells of a finished mask.\n\n"

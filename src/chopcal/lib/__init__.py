@@ -2,7 +2,11 @@ from enum import IntEnum
 
 from chopcal._chopper_lib_impl import (
     Chopper,
+    Polygon,
     beam_aperture,
+    chopper_lib_version,
+    inverse_velocity_to_wavelength,
+    wavelength_to_inverse_velocity,
     inverse_velocity_windows,
     inverse_velocity_limits,
     wavelength_limits,
@@ -12,6 +16,7 @@ from chopcal._chopper_lib_impl import (
     MASK_GROWN,
 )
 from chopcal._chopper_lib_impl import MaskSampler as _MaskSampler
+from chopcal._chopper_lib_impl import Region, RegionSampler
 from chopcal._chopper_lib_impl import (
     inverse_velocity_time_mask as _inverse_velocity_time_mask,
     unmasked_probability as _unmasked_probability,
@@ -285,6 +290,78 @@ class MaskSampler(_MaskSampler):
                          inverse_velocity_range, time_minimum, time_range)
 
 
+def _region_from_wavelengths(wavelength_min, wavelength_max, time_minimum, time_range):
+    """A source rectangle given in angstrom rather than in inverse velocity.
+
+    Converted the way chopper-lib converts, so the bands that come back out of
+    :meth:`Region.wavelength_ranges` are on the same footing as the rectangle that went in.
+    """
+    low = wavelength_to_inverse_velocity(wavelength_min)
+    high = wavelength_to_inverse_velocity(wavelength_max)
+    if not high > low:
+        raise ValueError(
+            f'wavelength_max must exceed wavelength_min; got {wavelength_min} and '
+            f'{wavelength_max} angstrom')
+    return Region.rectangle(low, high - low, time_minimum, time_range)
+
+
+Region.from_wavelengths = staticmethod(_region_from_wavelengths)
+
+
+def _region_to_dict(region, sampled=None):
+    """The region as plain data, in the schema :meth:`Region.write_json` writes.
+
+    ``sampled`` is the source :class:`Region` this was transmitted from, which sets the
+    acceptance; without it that and ``sampled`` are None, exactly as the file has them.
+    """
+    out = {
+        'chopper_lib_version': chopper_lib_version,
+        'inverse_velocity_unit': 's/m',
+        'time_unit': 's',
+        'sampled': None,
+        'acceptance': None,
+        'transmitted_area': region.area,
+        'inverse_velocity_bands': [list(band) for band in region.inverse_velocity_ranges()],
+        'polygons': [{'area': p.area, 'vertices': [list(v) for v in p.vertices]}
+                     for p in region.polygons],
+    }
+    if sampled is not None and len(sampled) == 1 and sampled.area > 0:
+        polygon = sampled.polygons[0]
+        inverse_velocity = [v[0] for v in polygon.vertices]
+        time = [v[1] for v in polygon.vertices]
+        out['sampled'] = {
+            'inverse_velocity': [min(inverse_velocity), max(inverse_velocity)],
+            'time': [min(time), max(time)],
+            'area': sampled.area,
+        }
+        out['acceptance'] = region.area / sampled.area
+    return out
+
+
+Region.to_dict = _region_to_dict
+
+_region_write_json = Region.write_json
+
+
+def _region_write_json_wrapper(region, path, sampled=None):
+    """Write the region to `path` as JSON, byte for byte what the McStas component writes.
+
+    ``sampled`` is the source :class:`Region`, of which only its single polygon is passed
+    down. :meth:`Region.to_dict` is the same thing without a file.
+    """
+    single = None
+    if sampled is not None:
+        if len(sampled) != 1:
+            raise ValueError(
+                f'the sampled region is one rectangle, so it holds one polygon; got '
+                f'{len(sampled)}')
+        single = sampled.polygons[0]
+    return _region_write_json(region, str(path), single)
+
+
+Region.write_json = _region_write_json_wrapper
+
+
 def _sample(sampler, count, generator=None):
     """``count`` (inverse_velocity, time) pairs, as two numpy arrays.
 
@@ -307,12 +384,19 @@ def _sample(sampler, count, generator=None):
 
 
 _MaskSampler.sample = _sample
+RegionSampler.sample = _sample
 
 
 __all__ = [
     'Chopper',
     'ChopperSet',
+    'Polygon',
+    'Region',
+    'RegionSampler',
     'beam_aperture',
+    'chopper_lib_version',
+    'inverse_velocity_to_wavelength',
+    'wavelength_to_inverse_velocity',
     'MaskSampler',
     'MaskValue',
     'inverse_velocity_windows',
