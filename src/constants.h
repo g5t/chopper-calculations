@@ -87,6 +87,32 @@ inline constexpr double BANDWIDTH_ANGLE = 161.0;
 /// Degrees in a turn -- a unit conversion, not a measurement.
 inline constexpr double DEGREES_PER_TURN = 360.0;
 
+// -- BIFROST disk geometry ---------------------------------------------------
+// Only the beam aperture needs these: how wide the beam is on each disk, in degrees
+// about its spindle, which is what widens a window in time. Everything above describes
+// where the disks are and when they open, and needs no geometry at all.
+//
+// `SLIT_HEIGHT` is the radial extent of the opening cut in the disk -- McStas
+// `DiskChopper`'s `yheight`, which places the beam centre at `radius - yheight/2` and
+// absorbs anything inside `radius - yheight`. The instrument definition carries the same
+// two values. `WINDOW` is the beam itself where it crosses the disk, which is smaller:
+// the slit clears it by about 3 mm radially on the small disks and 4 mm on the
+// bandwidth pair.
+
+/// Disk radius, m. The same for all six.
+inline constexpr double DISK_RADIUS = 0.350;
+
+/// The four small disks -- both pulse shaping and both frame overlap -- share a beam
+/// window and a slit, m.
+inline constexpr double NARROW_WINDOW_WIDTH = 0.02953;
+inline constexpr double NARROW_WINDOW_HEIGHT = 0.04751;
+inline constexpr double NARROW_SLIT_HEIGHT = 0.054134;
+
+/// The bandwidth pair passes a wider beam through a deeper slit, m.
+inline constexpr double BANDWIDTH_WINDOW_WIDTH = 0.060;
+inline constexpr double BANDWIDTH_WINDOW_HEIGHT = 0.090;
+inline constexpr double BANDWIDTH_SLIT_HEIGHT = 0.09846;
+
 }  // namespace chopcal::constants
 
 #endif  // CHOPCAL_CONSTANTS_H

@@ -4,22 +4,17 @@
 #include <cmath>
 #include <cstdio>
 #include <vector>
-#include <chopper-lib.h>
 #include "choppers.h"
 #include "constants.h"
 
-// The chopper structure is a run of doubles, so a library that means something else by
-// its second field would accept these settings and quietly answer a different question.
-#if !defined(CHOPPER_LIB_VERSION) || CHOPPER_LIB_VERSION < 20000
-#error "chopcal sets chopper delays in seconds; chopper-lib 2.0.0 or newer is required"
-#endif
+// chopper.h asserts the library version; these settings are delays in seconds and
+// single openings centred on the beam, which is what 4.x describes with beam=0.
 
 using namespace chopcal::constants;
+using chopcal::Chopper;
 
-auto bifrost(double E_0, double L_0, double chopPulseOpening)
--> std::map<std::string, chopper_parameters>
-//-> std::map<std::string, std::map<std::string, double>>
-//std::map<std::string, double>
+auto bifrost(double E_0, double L_0, double chopPulseOpening, bool apertures)
+-> std::map<std::string, Chopper>
 {
 // Transferred parameters
     double chopPulseFrequencyOrder=SOURCE_FREQUENCY; // Number of chopper pulses pr moderator pulse. It will automatically be reduced when nesesary and a warning will be written in the promt.
@@ -101,13 +96,34 @@ auto bifrost(double E_0, double L_0, double chopPulseOpening)
     // there. Stated as a phase this needed the reader to know that chopper-lib divided
     // by the magnitude of the speed, so that the same positive angle meant the same
     // positive time for either sign.
-    std::map<std::string, chopper_parameters> cpm;
-    cpm["ps1"] = {.speed=chopPulseSpeed, .delay=chopPulseDelay, .angle=PULSE_SHAPING_ANGLE, .path=chopPulseDist};
-    cpm["ps2"] = {.speed=chopPulseSpeed, .delay=chopPulse2Delay, .angle=PULSE_SHAPING_ANGLE, .path=chopPulseDist + PAIR_SEPARATION};
-    cpm["fo1"] = {.speed=SOURCE_FREQUENCY, .delay=chopFrameOverlap1Offset, .angle=FRAME_OVERLAP_1_ANGLE, .path=chopFrameOverlap1Pos};
-    cpm["fo2"] = {.speed=SOURCE_FREQUENCY, .delay=chopFrameOverlap2Offset, .angle=FRAME_OVERLAP_2_ANGLE, .path=chopFrameOverlap2Pos};
-    cpm["bw1"] = {.speed=SOURCE_FREQUENCY, .delay=chopBWOffset, .angle=BANDWIDTH_ANGLE, .path=chopBWPos};
-    cpm["bw2"] = {.speed=-SOURCE_FREQUENCY, .delay=chopBWOffset, .angle=BANDWIDTH_ANGLE, .path=chopBWPos + PAIR_SEPARATION};
+    //
+    // Every one of these is a single opening centred on the beam, which `Chopper::centred`
+    // writes as beam=0 and edges={-w/2, +w/2} -- the pair chopper-lib built for itself in
+    // `single_to_multi_chopper` before 4.0.0 asked the caller for the disk's own numbers.
+    // The band this train passes is therefore unchanged by the migration, to within the
+    // rounding of a reassociated edge-time expression.
+    //
+    // BIFROST's beam is not a pencil, and an opening is angular: a neutron crossing the
+    // disk to one side of the beam centre meets an edge early or late, which widens every
+    // window in time. `apertures` false is the point beam every version of this
+    // calculation described before the disk geometry was known -- narrower bands, and the
+    // numbers earlier releases returned.
+    const double narrow = apertures
+        ? chopcal::beam_aperture(DISK_RADIUS, NARROW_SLIT_HEIGHT,
+                                 NARROW_WINDOW_WIDTH, NARROW_WINDOW_HEIGHT)
+        : 0.0;
+    const double wide = apertures
+        ? chopcal::beam_aperture(DISK_RADIUS, BANDWIDTH_SLIT_HEIGHT,
+                                 BANDWIDTH_WINDOW_WIDTH, BANDWIDTH_WINDOW_HEIGHT)
+        : 0.0;
+
+    std::map<std::string, Chopper> cpm;
+    cpm["ps1"] = Chopper::centred(chopPulseSpeed, chopPulseDelay, PULSE_SHAPING_ANGLE, chopPulseDist, narrow);
+    cpm["ps2"] = Chopper::centred(chopPulseSpeed, chopPulse2Delay, PULSE_SHAPING_ANGLE, chopPulseDist + PAIR_SEPARATION, narrow);
+    cpm["fo1"] = Chopper::centred(SOURCE_FREQUENCY, chopFrameOverlap1Offset, FRAME_OVERLAP_1_ANGLE, chopFrameOverlap1Pos, narrow);
+    cpm["fo2"] = Chopper::centred(SOURCE_FREQUENCY, chopFrameOverlap2Offset, FRAME_OVERLAP_2_ANGLE, chopFrameOverlap2Pos, narrow);
+    cpm["bw1"] = Chopper::centred(SOURCE_FREQUENCY, chopBWOffset, BANDWIDTH_ANGLE, chopBWPos, wide);
+    cpm["bw2"] = Chopper::centred(-SOURCE_FREQUENCY, chopBWOffset, BANDWIDTH_ANGLE, chopBWPos + PAIR_SEPARATION, wide);
 
     return cpm;
 }

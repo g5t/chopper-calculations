@@ -10,8 +10,10 @@ class BifrostTestCase(unittest.TestCase):
             print(f'{n}: {d[n]}')
             self.assertTrue(hasattr(d[n], 'speed'))
             self.assertTrue(hasattr(d[n], 'delay'))
-            self.assertTrue(hasattr(d[n], 'angle'))
+            self.assertTrue(hasattr(d[n], 'beam'))
+            self.assertTrue(hasattr(d[n], 'edges'))
             self.assertTrue(hasattr(d[n], 'path'))
+            self.assertTrue(hasattr(d[n], 'aperture'))
             self.assertEqual(d[n].speed, s)
 
     def test_delays_are_times_within_a_source_period(self):
@@ -47,7 +49,7 @@ class BifrostTestCase(unittest.TestCase):
             self.assertEqual(first.speed, second.speed)  # co-rotating, not opposed
 
             # each disk is open for one slit crossing, centred on its own delay
-            crossing = first.angle / 360.0 / abs(first.speed)
+            crossing = first.opening / 360.0 / abs(first.speed)
             opens = [(c.delay - crossing / 2, c.delay + crossing / 2)
                      for c in (first, second)]
             start = max(o[0] for o in opens)
@@ -67,7 +69,7 @@ class BifrostTestCase(unittest.TestCase):
         centres = []
         for shaping_time in (0.0002, 0.001, 0.002):
             d = bifrost(7.0, 0, shaping_time)
-            crossing = d['ps1'].angle / 360.0 / abs(d['ps1'].speed)
+            crossing = d['ps1'].opening / 360.0 / abs(d['ps1'].speed)
             opens = [(c.delay - crossing / 2, c.delay + crossing / 2)
                      for c in (d['ps1'], d['ps2'])]
             centres.append((max(o[0] for o in opens) + min(o[1] for o in opens)) / 2)
