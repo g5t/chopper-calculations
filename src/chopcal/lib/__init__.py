@@ -180,8 +180,13 @@ class ChopperSet(dict):
     def quantities(self):
         """Every chopper's fields as scipp variables, by name.
 
-            >>> settings.quantities['ps1']['delay']     # doctest: +SKIP
-            <scipp.Variable> ()  float64  [s]  0.00595313
+        Fenced rather than indented because ``['ps1']['delay']`` is also valid Markdown
+        for a reference link, and the documentation build reads these docstrings.
+
+        ```pycon
+        >>> settings.quantities['ps1']['delay']     # doctest: +SKIP
+        <scipp.Variable> ()  float64  [s]  0.00595313
+        ```
         """
         return {name: chopper.quantities for name, chopper in self.items()}
 

@@ -16,8 +16,26 @@ classifiers = [
 ]
 dynamic = ["version"]
 
+[project.optional-dependencies]
+# Zensical is pre-1.0 and ships weekly; pin exactly and bump deliberately. Kept in step
+# with niess, which builds its site the same way.
+docs = [
+    "zensical==0.0.57",
+    "mkdocstrings-python>=2.0.6",
+]
+# What the site's examples need over and above chopcal itself. They are executable modules
+# run by test/test_docs_examples.py, and the ones that do not need numpy skip without it --
+# which is what the wheel test job, carrying only pytest, exercises.
+test = [
+    "pytest",
+    "numpy",
+]
+
 [project.urls]
 Homepage = "https://github.com/g5t/chopper-calculations"
+Documentation = "https://g5t.github.io/chopper-calculations/"
+Issues = "https://github.com/g5t/chopper-calculations/issues"
+Source = "https://github.com/g5t/chopper-calculations"
 
 
 [tool.setuptools_scm]
