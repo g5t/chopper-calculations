@@ -8,20 +8,46 @@ plausible-looking guess is wrong.
 Every answer chopcal gives is about one two-dimensional space: **inverse velocity** against
 **emission time**.
 
-Inverse velocity `a` (s/m) rather than wavelength, because it makes the arithmetic linear.
-A neutron emitted at time `t` reaches a disc `L` metres downstream at
+Inverse velocity `a` (s/m) rather than wavelength, because it makes the constant of
+proportionality **1**. A neutron emitted at time `t` reaches a disc `L` metres downstream at
 
 ```
 t + L * a
 ```
 
-so *a disc's acceptance is a straight band in this plane* — bounded by two parallel lines
-of slope `−L`. Two discs at different distances cross their bands at an angle, and what a
-train passes is the patch they share.
+with the flight path itself as the only coefficient, so *a disc's acceptance is a straight
+band in this plane* — bounded by two parallel lines of slope `−L`. Two discs at different
+distances cross their bands at an angle, and what a train passes is the patch they share.
 
-In wavelength the same statement needs a curve. That is the only reason for the choice; the
-conversion is one multiplication, and
-[`wavelength_to_inverse_velocity`](reference/api/lib.md) does it the way the library does.
+Wavelength would do as well for straightness. `λ = (h/m)·a` exactly, so the two axes differ
+by a scaling — and a scaling takes straight lines to straight lines, so the bands would
+still be bands:
+
+```python
+--8<-- "the_plane.py:proportional"
+```
+
+```
+1e-04 s/m -> 0.395603 AA   ratio 3956.0340
+5e-04 s/m -> 1.978017 AA   ratio 3956.0340
+1e-02 s/m -> 39.560340 AA   ratio 3956.0340
+H_OVER_M = 3956.0340 AA m/s
+```
+
+What changes is that the constant stops being 1. The same arrival time reads
+`t + (L·m/h)·λ`, so `m/h` has to be carried through every window, every intersection and
+every comparison, and a disc's slope stops being its flight path:
+
+```python
+--8<-- "the_plane.py:arrival"
+```
+
+Both give the same answer. But one constant threaded through every expression is exactly
+the kind of thing that gets written two ways and then disagrees with itself — which is not
+hypothetical here, and is why the conversions are exposed rather than left to the caller.
+[`wavelength_to_inverse_velocity`](reference/api/lib.md) uses the library's own `h/m`,
+which [as the constants page warns](reference/constants.md) is not quite the one
+`chopcal.constants` derives.
 
 !!! note "Emission time, not arrival time"
 
