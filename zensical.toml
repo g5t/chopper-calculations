@@ -95,6 +95,12 @@ md_in_html = {}
 tables = {}
 toc.permalink = true
 pymdownx.details = {}
+# Without these two, `:material-rocket-launch:` and friends render as literal text: the
+# extension is not loaded at all unless it is named here. Zensical ships both the resolver
+# functions and the icon set, so the strings are all that is needed -- these are the values
+# from its own bootstrap configuration.
+pymdownx.emoji.emoji_generator = "zensical.extensions.emoji.to_svg"
+pymdownx.emoji.emoji_index = "zensical.extensions.emoji.twemoji"
 pymdownx.highlight.anchor_linenums = true
 pymdownx.highlight.line_spans = "__span"
 pymdownx.highlight.pygments_lang_class = true
