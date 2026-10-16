@@ -7,6 +7,9 @@ repo_url = "https://github.com/g5t/chopper-calculations"
 repo_name = "g5t/chopper-calculations"
 edit_uri = "edit/main/docs/"
 copyright = "Copyright &copy; 2026 Gregory Tucker"
+# The BIFROST source-intensity figure draws itself from pre-computed frames; see
+# scripts/bifrost_intensity_figure.py.
+extra_javascript = ["javascripts/bifrost-intensity.js"]
 
 nav = [
   { "Home" = "index.md" },
@@ -21,6 +24,7 @@ nav = [
     { "Find the band a train passes" = "how-to/find-the-band.md" },
     { "Build the transmitted region" = "how-to/transmitted-region.md" },
     { "Weight the region by a source" = "how-to/weight-by-a-source.md" },
+    { "See BIFROST's source through its train" = "how-to/bifrost-source-intensity.md" },
     { "Sample without wasting rays" = "how-to/sample-the-region.md" },
     { "Allow for a guide's path spread" = "how-to/path-spread.md" },
     { "Work on a grid instead" = "how-to/grid-and-mask.md" },
