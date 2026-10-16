@@ -51,9 +51,32 @@ and is not included here.
 
 ## A finite beam
 
-The region's boundary is where transmission reaches zero for the beam width the discs'
-`aperture` describes. With `apertures=False`, the point beam, the boundary is instead
-where a linear ramp across the beam is half open. If the source changes little over one
-ramp, integrating over that point-beam region gives the transmitted total correct to first
-order. The ramps mostly soften the edges of the arrival-time profile rather than change
-how much gets through.
+With disc `aperture`s, which `chopcal.bifrost` sets by default, a `Region`'s boundary is
+where transmission falls to zero: everything inside counts as passing, including neutrons
+that only the edge of the beam carries through. Inside, an edge sweeping a uniformly lit
+beam ramps the transmission linearly, and `transmit_weighted` carries that ramp:
+
+```python
+--8<-- "weight_by_source.py:weighted"
+```
+
+```
+support 1.3289e-07, point beam 9.2192e-08, weighted 8.9224e-08 s^2/m
+transmitted 16.9999
+```
+
+The result is a `WeightedRegion`, with the same `coverage`, `integrate` and `arrivals`;
+each piece counts by the integral of its transmission rather than its area. Here the
+source passes 17.0 rather than the 28.1 the support counts.
+
+`groups` says which discs share a housing. A neutron crosses those at the same place
+across the beam, so a group passes the part of the beam open in all of them. For a pair
+turning the same way that is the smaller of the two transmissions. For a counter-rotating
+pair, like BIFROST's bandwidth discs, equal openings sweeping from opposite sides stay shut
+until the edges meet at the half-way time and then open twice as fast. Different groups
+multiply, as reflections in a guide scramble where across the beam a neutron is. Without
+`groups` every disc is its own group.
+
+The point beam, `apertures=False`, has its boundary where each ramp is half open. Its area
+is the first-order answer, within 3.2 % of the weighted one here; the difference is where
+ramps of different discs overlap.

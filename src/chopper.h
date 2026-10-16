@@ -24,8 +24,9 @@ extern "C" {
 // `wavelength_windows` on a real train therefore returned a different band on Windows
 // than on Linux. Nothing here calls the broken function directly, so this guard is the
 // only thing standing between a caller and a platform-dependent answer.
-#if !defined(CHOPPER_LIB_VERSION) || CHOPPER_LIB_VERSION < 40201
-#error "chopcal builds transmitted regions as polygons, and needs range merging that does not depend on the platform's qsort; chopper-lib 4.2.1 or newer is required"
+// 4.3.0 for `chopper_weighted_set`, which `WeightedRegion` binds.
+#if !defined(CHOPPER_LIB_VERSION) || CHOPPER_LIB_VERSION < 40300
+#error "chopcal weights transmitted regions by how likely a neutron is to get through; chopper-lib 4.3.0 or newer is required"
 #endif
 
 namespace chopcal {
