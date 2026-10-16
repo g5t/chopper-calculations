@@ -61,6 +61,10 @@ every window opens half of it early and closes half of it late.
 Note the second window in the output above. It is not a band BIFROST delivers; see
 [The band list, and a caveat](#the-band-list-and-a-caveat).
 
+To set the real choppers, NICOS needs each disc's experiment delay (`ChopDly-S`) rather
+than `delay`; `chopcal.nicos.bifrost(pulse_delay=..., energy_min=...)` gives them, keyed
+by NICOS device. See [Set the choppers from NICOS](docs/how-to/set-the-choppers-from-nicos.md).
+
 
 
 ## Installation

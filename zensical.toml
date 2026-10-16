@@ -16,6 +16,7 @@ nav = [
   ] },
   { "How-to guides" = [
     { "Place the BIFROST band" = "how-to/place-the-band.md" },
+    { "Set the choppers from NICOS" = "how-to/set-the-choppers-from-nicos.md" },
     { "Describe a chopper" = "how-to/describe-a-chopper.md" },
     { "Find the band a train passes" = "how-to/find-the-band.md" },
     { "Build the transmitted region" = "how-to/transmitted-region.md" },
@@ -26,6 +27,7 @@ nav = [
   { "Reference" = [
     { "API: chopcal" = "reference/api/chopcal.md" },
     { "API: chopcal.lib" = "reference/api/lib.md" },
+    { "API: chopcal.nicos" = "reference/api/nicos.md" },
     { "Constants" = "reference/constants.md" },
   ] },
   { "Explanation" = [
