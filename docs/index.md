@@ -55,8 +55,9 @@ the region that does get through, and a sampler that draws from it — the same 
 McStas' own `Polygon_ESS_butterfly` uses.
 
 **Asking how much arrives.** Give it a gridded source, such as a moderator's tabulated
-spectrum, and chopcal integrates it over the transmitted region exactly: the total, or what
-reaches a monitor or the sample by arrival time and wavelength. With a finite beam it also
+spectrum, and chopcal integrates it over the transmitted region exactly: the total, what
+reaches a monitor or the sample by arrival time and wavelength, or the mean and spread of
+wavelength in each arrival-time bin, the numbers a wavelength lookup table stores. With a finite beam it also
 weights each neutron by how likely it is to get through while a disc's edge is still
 sweeping the beam. See [Weight the region by a source](how-to/weight-by-a-source.md).
 
