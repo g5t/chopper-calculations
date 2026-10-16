@@ -10,13 +10,15 @@ Exposes chopper calculations to Python which were otherwise hidden in McStas ins
 |-----------------|-----------------------------------------------------------------|----------------------------------------|-----------|
 | Instr           | BIFROST                                                         | `chopcal.bifrost`                      | function  |
 |                 | a set of choppers, printed as a table                           | `chopcal.lib.ChopperSet`               | class     |
+| NICOS           | BIFROST's speeds and experiment delays, by NICOS device         | `chopcal.nicos.bifrost`                | function  |
+|                 | ESS `ChopDly-S` for one chopper                                 | `chopcal.nicos.experiment_delay`       | function  |
 | runtime library | [chopper-lib](https://github.com/mcdotstar/mcstas-chopper-lib/) | `chopcal.lib`                          | submodule |
 |                 | chopper parameters                                              | `chopcal.lib.Chopper`                  | class     |
 |                 | transmitted inverse-velocity phase space                        | `chopcal.lib.inverse_velocity_windows` | function  |
 |                 | transmitted inverse-velocity extrema                            | `chopcal.lib.inverse_velocity_limits`  | function  |
 |                 | transmitted wavelength bands                                    | `chopcal.lib.wavelength_windows`       | function  |
 |                 | transmitted wavelength extrema                                  | `chopcal.lib.wavelength_limits`        | function  |
-|                 | beam width on a disk, in degrees                                | `chopcal.lib.beam_aperture`            | function  |
+|                 | beam width on a disk, in degrees, at its inner edge or centre   | `chopcal.lib.beam_aperture`            | function  |
 |                 | whether a parked disk stands open                               | `chopcal.lib.Chopper.parked_is_open`   | method    |
 |                 | allowed (inverse velocity, time) bins                           | `chopcal.lib.inverse_velocity_time_mask` | function |
 |                 | the allowed fraction of a signal                                | `chopcal.lib.unmasked_probability`     | function  |
@@ -24,6 +26,8 @@ Exposes chopper calculations to Python which were otherwise hidden in McStas ins
 |                 | the exact transmitted region                                    | `chopcal.lib.Region`                   | class     |
 |                 | one convex piece of it                                          | `chopcal.lib.Polygon`                  | class     |
 |                 | direct sampling over that region                                | `chopcal.lib.RegionSampler`            | class     |
+|                 | a gridded source through it: coverage, total, arrival times     | `chopcal.lib.Region.coverage`, `.integrate`, `.arrivals` | methods |
+|                 | the region weighted by how likely a neutron is to get through   | `chopcal.lib.WeightedRegion`           | class     |
 
 
 ## Placing the band
