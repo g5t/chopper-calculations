@@ -2,6 +2,7 @@
 // Created by gst on 23/10/23.
 //
 #include <cmath>
+#include <stdexcept>
 #include <cstdio>
 #include <vector>
 #include "choppers.h"
@@ -13,11 +14,20 @@
 using namespace chopcal::constants;
 using chopcal::Chopper;
 
-auto bifrost(double E_0, double L_0, double chopPulseOpening, bool apertures)
+auto bifrost(double E_0, double L_0, double chopPulseOpening, bool apertures,
+            double chopPulseSpeedMax)
 -> std::map<std::string, Chopper>
 {
 // Transferred parameters
-    double chopPulseFrequencyOrder=SOURCE_FREQUENCY; // Number of chopper pulses pr moderator pulse. It will automatically be reduced when nesesary and a warning will be written in the promt.
+    // Number of chopper pulses per moderator pulse: the highest harmonic of the source the
+    // installed disks may turn at. It is reduced further, with a warning, when the
+    // requested opening needs a slower disk.
+    double chopPulseFrequencyOrder=floor(chopPulseSpeedMax/SOURCE_FREQUENCY + 1e-9);
+    if (chopPulseFrequencyOrder < 1) {
+        throw std::invalid_argument(
+            "The pulse shaping choppers must be allowed to turn at least as fast as the "
+            "14 Hz source, or they cannot be phased to it");
+    }
     double chopBWPos=BANDWIDTH_DISTANCE;  // Distance from pulse shapping choppers to BW Chopper
 
 /*************************************** Chopper Variables  *******************************************/

@@ -8,3 +8,4 @@ The top-level package: instrument settings, and the bandwidths that go with them
         - bifrost
         - BIFROST_BANDWIDTH
         - BIFROST_BANDWIDTH_POINT_BEAM
+        - PULSE_SHAPING_SPEED_MAX

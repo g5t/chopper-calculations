@@ -60,12 +60,14 @@ nb::module_::import_("chopcal._chopper_lib_impl");
 
 bind_constants(m);
 m.def("bifrost", &bifrost, "energy_min"_a=0, "wavelength_max"_a=0, "shaping_time"_a=0.0002,
-      "apertures"_a=true,
+      "apertures"_a=true, "pulse_shaping_speed_max"_a=196.0,
       "Chopper settings for BIFROST, as a speed, delay, slit edges, flight path and beam\n"
       "aperture for each of its six choppers.\n\n"
       "The band is a fixed ~1.77 angstrom wide, so one number places it: either the\n"
       "longest wavelength (angstrom) or the lowest energy (meV) to pass, the band\n"
       "running from there to ~1.77 angstrom shorter. A positive wavelength_max wins\n"
-      "over energy_min; giving neither leaves every delay infinite.\n\n"
+      "over energy_min; giving neither leaves every delay infinite. The pulse shaping\n"
+      "pair turns at the fastest harmonic of 14 Hz up to pulse_shaping_speed_max (Hz)\n"
+      "that the requested shaping time allows.\n\n"
       "Prefer chopcal.bifrost, which rejects that case and returns a ChopperSet.");
 }

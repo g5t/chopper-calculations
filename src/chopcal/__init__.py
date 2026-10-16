@@ -23,8 +23,12 @@ BIFROST_BANDWIDTH = 1.9061  # angstrom, the real beam
 BIFROST_BANDWIDTH_POINT_BEAM = 1.7715  # angstrom, apertures=False
 
 
+#: The pulse shaping disks BIFROST was designed for turn at up to 14 harmonics of the source.
+PULSE_SHAPING_SPEED_MAX = 196.0  # Hz
+
+
 def bifrost(energy_min=None, wavelength_max=None, shaping_time=2e-4,
-            apertures=True):
+            apertures=True, pulse_shaping_speed_max=PULSE_SHAPING_SPEED_MAX):
     """Chopper settings for BIFROST, from the slow edge of the band you want.
 
     BIFROST passes a fixed bandwidth of about 1.91 angstrom, so one number decides where
@@ -48,13 +52,18 @@ def bifrost(energy_min=None, wavelength_max=None, shaping_time=2e-4,
     shaping_time : float, optional
         How long the pulse shaping pair should burst for, in seconds. They co-rotate at
         a harmonic of 14 Hz, one lagging the other, so the burst is one slit crossing
-        less the lag; asking for longer than a crossing at 196 Hz drops them to a lower
-        harmonic and says so. Defaults to 0.2 ms.
+        less the lag; asking for longer than a crossing at ``pulse_shaping_speed_max``
+        drops them to a lower harmonic and says so. Defaults to 0.2 ms.
     apertures : bool, optional
         Whether to describe the beam at its real width, which widens every window in time
         and the band by about 0.13 angstrom. True by default. Pass False for the pencil
         beam every release before the disk geometry was known described, and the narrower
         numbers that went with it.
+    pulse_shaping_speed_max : float, optional
+        The fastest the installed pulse shaping disks may turn, in Hz. They turn at the
+        highest harmonic of 14 Hz up to this that ``shaping_time`` allows. Defaults to the
+        196 Hz BIFROST was designed for; a substitute disk set rated lower needs its own
+        limit, e.g. 126.
 
     Returns
     -------
@@ -96,7 +105,7 @@ def bifrost(energy_min=None, wavelength_max=None, shaping_time=2e-4,
     # bifrost(7.0, 0) work.
     return lib.ChopperSet(
         sorted(_bifrost(energy_min or 0.0, wavelength_max or 0.0, shaping_time,
-                        apertures).items(),
+                        apertures, pulse_shaping_speed_max).items(),
                key=lambda pair: pair[1].path)
     )
 
@@ -105,6 +114,7 @@ __all__ = [
     "__version__",
     "BIFROST_BANDWIDTH",
     "BIFROST_BANDWIDTH_POINT_BEAM",
+    "PULSE_SHAPING_SPEED_MAX",
     "bifrost",
     "constants",
     "lib"

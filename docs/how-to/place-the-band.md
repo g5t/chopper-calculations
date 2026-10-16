@@ -46,7 +46,8 @@ crossing less the lag.
 chopcal.bifrost(wavelength_max=3.0, shaping_time=1e-3)
 ```
 
-Ask for longer than a slit crossing at 196 Hz and the pair drops to a lower harmonic, and
+Ask for longer than a slit crossing at the pair's top speed -- 196 Hz unless
+you pass `pulse_shaping_speed_max` -- and it drops to a lower harmonic, and
 says so on stdout.
 
 ## Turn the beam width off

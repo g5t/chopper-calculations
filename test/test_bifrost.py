@@ -110,3 +110,30 @@ class BifrostTestCase(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PulseShapingSpeedLimitTestCase(unittest.TestCase):
+    def test_the_designed_disks_turn_at_fourteen_harmonics(self):
+        from chopcal import bifrost
+        self.assertEqual(bifrost(7.0)['ps1'].speed, 196)
+
+    def test_a_slower_disk_set_turns_at_the_fastest_harmonic_it_is_rated_for(self):
+        """A substitute pair rated to 126 Hz, or to anything short of the next harmonic."""
+        from chopcal import bifrost
+        for limit in (126.0, 130.0):
+            d = bifrost(7.0, pulse_shaping_speed_max=limit)
+            self.assertEqual(d['ps1'].speed, 126, limit)
+            self.assertEqual(d['ps2'].speed, 126, limit)
+            # nothing else depends on it
+            self.assertEqual(d['bw1'].delay, bifrost(7.0)['bw1'].delay)
+
+    def test_the_shaping_time_can_still_ask_for_slower(self):
+        from chopcal import bifrost
+        # one 170 degree crossing at 126 Hz is 3.7 ms; 5 ms needs 84 Hz
+        d = bifrost(7.0, shaping_time=5e-3, pulse_shaping_speed_max=126.0)
+        self.assertEqual(d['ps1'].speed, 84)
+
+    def test_a_limit_below_the_source_frequency_is_refused(self):
+        from chopcal import bifrost
+        with self.assertRaises(ValueError):
+            bifrost(7.0, pulse_shaping_speed_max=10.0)
