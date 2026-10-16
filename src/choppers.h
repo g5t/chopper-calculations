@@ -9,7 +9,8 @@
 #include <string>
 #include "chopper.h"
 
-auto bifrost(double E_0, double L_0, double chopPulseOpening, bool apertures)
+auto bifrost(double E_0, double L_0, double chopPulseOpening, bool apertures,
+            double chopPulseSpeedMax)
 -> std::map<std::string, chopcal::Chopper>;
 
 #endif //BIFROST_CHOPPERS_CHOPPERS_H

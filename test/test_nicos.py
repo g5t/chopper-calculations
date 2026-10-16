@@ -46,3 +46,9 @@ class NicosTestCase(unittest.TestCase):
         chopper = Chopper(14.0, 0.01, 0.0, [0.0, 10.0, 180.0, 190.0], 10.0, 0.0)
         with self.assertRaises(ValueError):
             experiment_delay(chopper)
+
+    def test_nicos_passes_on_the_disk_sets_speed_limit(self):
+        from chopcal.nicos import bifrost
+        values = bifrost(pulse_delay=10_000, energy_min=7.0, pulse_shaping_speed_max=126)
+        self.assertEqual(values['psc1_chopper_speed'], 126)
+        self.assertEqual(values['psc2_chopper_speed'], 126)

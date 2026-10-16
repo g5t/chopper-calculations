@@ -18,7 +18,7 @@ chopper ``chopcal.bifrost`` describes is the centre of its one opening. Both are
 from the proton pulse, so the experiment delay follows from chopcal's own geometry alone:
 the time ``slit_edges[0]`` reaches the beam, less the pulse delay.
 """
-from . import bifrost as _bifrost
+from . import PULSE_SHAPING_SPEED_MAX, bifrost as _bifrost
 
 #: chopcal's names for BIFROST's discs, and the prefix of each one's NICOS devices.
 NICOS_NAMES = {'ps1': 'psc1', 'ps2': 'psc2', 'fo1': 'foc1', 'fo2': 'foc2',
@@ -48,12 +48,15 @@ def experiment_delay(chopper, pulse_delay=0.0):
 
 
 def bifrost(pulse_delay, energy_min=None, wavelength_max=None, shaping_time=2e-4,
-            apertures=True):
+            apertures=True, pulse_shaping_speed_max=PULSE_SHAPING_SPEED_MAX):
     """BIFROST's chopper settings, keyed by the NICOS device that takes each one.
 
     The arguments after ``pulse_delay`` are :func:`chopcal.bifrost`'s. ``pulse_delay`` is
     the ``BeamPosDly-S`` the chopper controllers hold, in **ns** as they hold it; it has
-    no default because no value is right for every installation. Each disc gets its
+    no default because no value is right for every installation.
+    ``pulse_shaping_speed_max`` is the fastest the installed pulse shaping disks may
+    turn, which NICOS knows as the largest speed its ``psc1_chopper_speed`` device
+    maps. Each disc gets its
     ``<disc>_chopper_speed`` in Hz, signed -- ``bwc2`` counter-rotates -- and its
     ``<disc>_chopper_delay``, the experiment delay ``ChopDly-S``, in ns::
 
@@ -65,7 +68,8 @@ def bifrost(pulse_delay, energy_min=None, wavelength_max=None, shaping_time=2e-4
     ``MechDly-S`` is measured to.
     """
     settings = _bifrost(energy_min=energy_min, wavelength_max=wavelength_max,
-                        shaping_time=shaping_time, apertures=apertures)
+                        shaping_time=shaping_time, apertures=apertures,
+                        pulse_shaping_speed_max=pulse_shaping_speed_max)
     values = {}
     for key, name in NICOS_NAMES.items():
         chopper = settings[key]

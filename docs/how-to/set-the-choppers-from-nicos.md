@@ -32,6 +32,16 @@ counter-rotates), and an experiment delay in ns, folded into one turn of its dis
 `pulse_delay` is the `BeamPosDly-S` the controllers hold, in ns. It has no default,
 because no value is right for every installation.
 
+The pulse shaping pair turns at the fastest harmonic of 14 Hz that both the requested
+`shaping_time` and the installed disks allow. The disks BIFROST was designed for are
+rated to 196 Hz; a substitute set rated lower needs its own limit, which NICOS knows as
+the largest speed its `psc1_chopper_speed` device maps:
+
+```pycon
+>>> bifrost(pulse_delay=10_000, energy_min=7.0, pulse_shaping_speed_max=126)['psc1_chopper_speed']
+126.0
+```
+
 `chopcal.nicos.experiment_delay(chopper, pulse_delay)` does the same for one
 `Chopper`, in seconds. chopcal's `delay` is when the centre of a disc's one opening is
 on the beam, so the edge `slit_edges[0]` reaches the beam `width / 2` of a turn later
