@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -61,6 +62,7 @@ using f64_1d = nb::ndarray<const double, nb::ndim<1>, nb::c_contig>;
 using f64_2d = nb::ndarray<const double, nb::ndim<2>, nb::c_contig>;
 using i32_2d = nb::ndarray<const int, nb::ndim<2>, nb::c_contig>;
 using mask_out = nb::ndarray<nb::numpy, int, nb::ndim<2>>;
+using f64_out = nb::ndarray<nb::numpy, double, nb::ndim<2>>;
 
 /// Bin edges, checked. The C exits the process on a count mismatch, so it never sees one.
 unsigned bin_count(const f64_1d & edges, const char * name) {
@@ -83,6 +85,40 @@ mask_out make_mask_array(int * data, const size_t rows, const size_t columns) {
   nb::capsule owner(data, [](void * p) noexcept { delete[] static_cast<int *>(p); });
   const size_t shape[2] = {rows, columns};
   return mask_out(data, 2, shape, owner);
+}
+
+/// A freshly allocated, zeroed 2-D double array Python owns.
+std::pair<f64_out, double *> make_f64_array(const size_t rows, const size_t columns) {
+  auto * data = new double[rows * columns]();
+  nb::capsule owner(data, [](void * p) noexcept { delete[] static_cast<double *>(p); });
+  const size_t shape[2] = {rows, columns};
+  return {f64_out(data, 2, shape, owner), data};
+}
+
+/// The bins `[first, last)` of `n` bins with these edges that `[lo, hi]` reaches into.
+std::pair<unsigned, unsigned> bins_spanning(const double * edges, const unsigned n,
+                                            const double lo, const double hi) {
+  const auto first = std::upper_bound(edges, edges + n + 1, lo) - edges - 1;
+  const auto last = std::lower_bound(edges, edges + n + 1, hi) - edges;
+  return {static_cast<unsigned>(std::max<long>(first, 0)),
+          static_cast<unsigned>(std::min<long>(last, n))};
+}
+
+/** Keep the part of `polygon` where `lo <= alpha*inverse_velocity + beta*time <= hi`.
+ *
+ * Two of chopper-lib's half-plane clips, the only geometry it has and the only geometry
+ * this needs: a grid cell is a slab in each coordinate, and an arrival-time bin at path
+ * `L` is a slab in `L*inverse_velocity + time`. Returns whether anything is left.
+ */
+bool clip_slab(chopper_polygon & polygon, const double alpha, const double beta,
+               const double lo, const double hi) {
+  if (!chopper_polygon_clip_halfplane(&polygon, alpha, beta, hi)
+      || (polygon.count && !chopper_polygon_clip_halfplane(&polygon, -alpha, -beta, -lo))) {
+    throw std::runtime_error(
+        "Clipping a transmitted polygon to a grid cell needed more vertices than a "
+        "polygon has room for");
+  }
+  return polygon.count != 0;
 }
 
 /** chopper-lib's mask sampler, owning what `chopper_mask_sampler_make` allocated.
@@ -238,6 +274,101 @@ class Region {
           "vertices than it has room for.");
     }
     return out;
+  }
+
+  /** Call `f(row, column, piece)` for each piece of the region in a grid cell.
+   *
+   * Rows are emission-time bins and columns inverse-velocity bins, as the masks have
+   * them. Each polygon is cut into rows first and each row into cells, so only the
+   * cells a polygon's own extent reaches are visited.
+   */
+  template <class F>
+  void for_each_cell_piece(const double * inverse_velocities, const unsigned columns,
+                           const double * times, const unsigned rows, F && f) const {
+    for (unsigned i = 0; i < set_.count; ++i) {
+      double lo = 0, hi = 0;
+      chopper_polygon_extent(&set_.polygon[i], 0.0, 1.0, &lo, &hi);
+      const auto [r0, r1] = bins_spanning(times, rows, lo, hi);
+      for (unsigned r = r0; r < r1; ++r) {
+        chopper_polygon row = set_.polygon[i];
+        if (!clip_slab(row, 0.0, 1.0, times[r], times[r + 1])) continue;
+        chopper_polygon_extent(&row, 1.0, 0.0, &lo, &hi);
+        const auto [c0, c1] = bins_spanning(inverse_velocities, columns, lo, hi);
+        for (unsigned c = c0; c < c1; ++c) {
+          chopper_polygon piece = row;
+          if (clip_slab(piece, 1.0, 0.0, inverse_velocities[c], inverse_velocities[c + 1])) {
+            f(r, c, piece);
+          }
+        }
+      }
+    }
+  }
+
+  /// The fraction of each (time, inverse velocity) cell the region covers, exactly.
+  [[nodiscard]] f64_out coverage(const f64_1d & inverse_velocities,
+                                 const f64_1d & times) const {
+    const auto columns = bin_count(inverse_velocities, "inverse_velocities");
+    const auto rows = bin_count(times, "times");
+    const double * u = inverse_velocities.data();
+    const double * t = times.data();
+    auto [array, out] = make_f64_array(rows, columns);
+    for_each_cell_piece(u, columns, t, rows, [&](unsigned r, unsigned c,
+                                                 const chopper_polygon & piece) {
+      out[r * columns + c] += chopper_polygon_area(&piece)
+                              / ((u[c + 1] - u[c]) * (t[r + 1] - t[r]));
+    });
+    return array;
+  }
+
+  /** What a gridded source puts through the region, by arrival time at `distance`.
+   *
+   * `signal` is the amount in each (time, inverse velocity) cell, spread evenly over it.
+   * A neutron emitted at `(a, t)` reaches `distance` at `t + distance*a`; that shear
+   * keeps areas, so the amount in an arrival bin is the density times the area of the
+   * piece between two lines of constant arrival time. With `period` positive, arrival
+   * times are folded into `[0, period)` first, as a detector folds them into its frame.
+   */
+  [[nodiscard]] f64_out arrivals(const f64_2d & signal, const f64_1d & inverse_velocities,
+                                 const f64_1d & times, const double distance,
+                                 const f64_1d & arrival_times, const double period) const {
+    const auto columns = bin_count(inverse_velocities, "inverse_velocities");
+    const auto rows = bin_count(times, "times");
+    const auto bins = bin_count(arrival_times, "arrival_times");
+    if (signal.shape(0) != rows || signal.shape(1) != columns) {
+      throw std::invalid_argument(
+          "A signal over these edges is (" + std::to_string(rows) + ", "
+          + std::to_string(columns) + "); got (" + std::to_string(signal.shape(0)) + ", "
+          + std::to_string(signal.shape(1)) + ")");
+    }
+    if (period < 0.0) {
+      throw std::invalid_argument("A period folds arrival times, so it must be positive");
+    }
+    const double * u = inverse_velocities.data();
+    const double * t = times.data();
+    const double * edges = arrival_times.data();
+    const double * amount = signal.data();
+    auto [array, out] = make_f64_array(bins, columns);
+    for_each_cell_piece(u, columns, t, rows, [&](unsigned r, unsigned c,
+                                                 const chopper_polygon & piece) {
+      const double cell = amount[r * columns + c];
+      if (cell == 0.0) return;
+      const double density = cell / ((u[c + 1] - u[c]) * (t[r + 1] - t[r]));
+      double lo = 0, hi = 0;
+      chopper_polygon_extent(&piece, distance, 1.0, &lo, &hi);
+      const long k0 = period > 0.0 ? static_cast<long>(std::floor(lo / period)) : 0;
+      const long k1 = period > 0.0 ? static_cast<long>(std::floor(hi / period)) : 0;
+      for (long k = k0; k <= k1; ++k) {
+        const double shift = static_cast<double>(k) * period;
+        const auto [b0, b1] = bins_spanning(edges, bins, lo - shift, hi - shift);
+        for (unsigned b = b0; b < b1; ++b) {
+          chopper_polygon arriving = piece;
+          if (clip_slab(arriving, distance, 1.0, edges[b] + shift, edges[b + 1] + shift)) {
+            out[b * columns + c] += density * chopper_polygon_area(&arriving);
+          }
+        }
+      }
+    });
+    return array;
   }
 
   [[nodiscard]] std::vector<std::pair<double, double>> inverse_velocity_ranges() const {
@@ -621,6 +752,9 @@ nb::class_<Region>(m, "Region",
            "evenly, it opens each slab into a wedge. It gives the *support* under that\n"
            "uncertainty rather than a distribution over it, the same bargain\n"
            "`Chopper.aperture` makes for the width of the beam.")
+      .def("_coverage", &Region::coverage, "inverse_velocities"_a, "times"_a)
+      .def("_arrivals", &Region::arrivals, "signal"_a, "inverse_velocities"_a, "times"_a,
+           "distance"_a, "arrival_times"_a, "period"_a)
       .def("inverse_velocity_ranges", &Region::inverse_velocity_ranges,
            "The bands the region covers in inverse velocity, sorted and merged, s/m.\n\n"
            "The projection of the intersection, where `inverse_velocity_windows` gives\n"

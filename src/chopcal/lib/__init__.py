@@ -367,6 +367,62 @@ def _region_write_json_wrapper(region, path, sampled=None):
 Region.write_json = _region_write_json_wrapper
 
 
+def _region_coverage(region, inverse_velocities, times):
+    """The fraction of each (time, inverse velocity) cell the region covers.
+
+    Exact: each polygon is clipped to each cell it reaches, where
+    :func:`inverse_velocity_time_mask` counts a cell whole or not at all. Shaped
+    **(time, inverse velocity)**, as the masks are; `inverse_velocities` (s/m) and `times`
+    (s, at the source) are bin edges. Needs numpy.
+    """
+    return region._coverage(_as_edges(inverse_velocities), _as_edges(times))
+
+
+def _as_signal(signal):
+    return _numpy().ascontiguousarray(signal, dtype=float)
+
+
+def _region_integrate(region, signal, inverse_velocities, times):
+    """How much of a gridded source the region transmits.
+
+    `signal` is the amount in each (time, inverse velocity) cell -- a histogram of the
+    source, shaped as :meth:`coverage` is -- spread evenly over its cell. That reading is
+    what makes this exact rather than approximate in the cells the region only partly
+    covers, which :func:`unmasked_probability` counts whole.
+    """
+    return float((_as_signal(signal) * region.coverage(inverse_velocities, times)).sum())
+
+
+def _region_arrivals(region, signal, inverse_velocities, times, distance, arrival_times,
+                     period=None):
+    """What a gridded source puts through the region, by arrival time at `distance`.
+
+    A neutron emitted at inverse velocity `a` and time `t` reaches `distance` (m) at
+    `t + distance * a`. That shear keeps areas, so each cell's share of the region is
+    carried into `arrival_times` (s, bin edges) exactly: the density times the area
+    between two lines of constant arrival time. `distance` 0 gives the emission times.
+
+    Shaped **(arrival time, inverse velocity)**, since the shear leaves inverse velocity
+    alone: sum over the last axis for the time profile at a monitor or the sample, or keep
+    it for the wavelength as well. With `period` (s), arrival times are folded into
+    ``[0, period)`` first, as a detector folds them into its frame -- give `arrival_times`
+    in that range.
+
+    `signal` is read as :meth:`integrate` reads it. One flight path for every neutron: a
+    guide's spread of paths smears arrivals, and is not included.
+    """
+    if period is not None and not period > 0:
+        raise ValueError(f'a period folds arrival times, so it must be positive; got {period}')
+    return region._arrivals(_as_signal(signal), _as_edges(inverse_velocities),
+                            _as_edges(times), float(distance), _as_edges(arrival_times),
+                            float(period or 0.0))
+
+
+Region.coverage = _region_coverage
+Region.integrate = _region_integrate
+Region.arrivals = _region_arrivals
+
+
 def _sample(sampler, count, generator=None):
     """``count`` (inverse_velocity, time) pairs, as two numpy arrays.
 

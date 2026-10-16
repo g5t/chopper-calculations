@@ -20,6 +20,7 @@ nav = [
     { "Describe a chopper" = "how-to/describe-a-chopper.md" },
     { "Find the band a train passes" = "how-to/find-the-band.md" },
     { "Build the transmitted region" = "how-to/transmitted-region.md" },
+    { "Weight the region by a source" = "how-to/weight-by-a-source.md" },
     { "Sample without wasting rays" = "how-to/sample-the-region.md" },
     { "Allow for a guide's path spread" = "how-to/path-spread.md" },
     { "Work on a grid instead" = "how-to/grid-and-mask.md" },
