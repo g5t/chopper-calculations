@@ -61,13 +61,21 @@ beam ramps the transmission linearly, and `transmit_weighted` carries that ramp:
 ```
 
 ```
-support 1.3289e-07, point beam 9.2192e-08, weighted 8.9224e-08 s^2/m
-transmitted 16.9999
+support 1.3289e-07, point beam 9.2192e-08, weighted 8.9711e-08 s^2/m
+transmitted 17.1654
 ```
 
 The result is a `WeightedRegion`, with the same `coverage`, `integrate` and `arrivals`;
 each piece counts by the integral of its transmission rather than its area. Here the
-source passes 17.0 rather than the 28.1 the support counts.
+source passes 17.2 rather than the 28.1 the support counts.
+
+The choppers handed to `transmit_weighted` carry `beam_aperture(..., at='centre')`. The
+region's edge is where the last of the beam is cleared, at the window's inner corner,
+which is what `chopcal.bifrost` and the default `at='inner'` give. The ramp in between is
+set by the beam centre: while an edge spans the window's height, the fraction it has
+passed grows linearly at the rate the centre radius sets. Against McStas with the real
+window geometry, the centre angle fits a BIFROST train's arrival times to within counting
+error; the inner one leaves the tails of the profile 6-18% low.
 
 `groups` says which discs share a housing. A neutron crosses those at the same place
 across the beam, so a group passes the part of the beam open in all of them. For a pair
@@ -78,5 +86,5 @@ multiply, as reflections in a guide scramble where across the beam a neutron is.
 `groups` every disc is its own group.
 
 The point beam, `apertures=False`, has its boundary where each ramp is half open. Its area
-is the first-order answer, within 3.2 % of the weighted one here; the difference is where
+is the first-order answer, within 2.8 % of the weighted one here; the difference is where
 ramps of different discs overlap.

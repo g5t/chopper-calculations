@@ -224,6 +224,33 @@ class BeamApertureTestCase(unittest.TestCase):
         with self.assertRaises(ValueError):
             beam_aperture(0.35, 0.3, 0.03, 0.5)
 
+    def test_at_the_centre_is_the_angle_the_beam_centre_subtends(self):
+        """The ramp a weighted transmission models: the window's width at the radius
+        of the beam centre, where an edge spanning the window's height passes a fraction
+        growing linearly with beam_centre * tan(angle)."""
+        from math import atan2, degrees
+        from chopcal.lib import beam_aperture
+        from chopcal import constants as c
+        for slit, width, height, expected in (
+                (c.NARROW_SLIT_HEIGHT, c.NARROW_WINDOW_WIDTH, c.NARROW_WINDOW_HEIGHT, 5.2357),
+                (c.BANDWIDTH_SLIT_HEIGHT, c.BANDWIDTH_WINDOW_WIDTH,
+                 c.BANDWIDTH_WINDOW_HEIGHT, 11.3921)):
+            centre = beam_aperture(c.DISK_RADIUS, slit, width, height, at='centre')
+            self.assertAlmostEqual(
+                centre, 2 * degrees(atan2(width / 2, c.DISK_RADIUS - slit / 2)), places=12)
+            self.assertAlmostEqual(centre, expected, places=4)
+            self.assertLess(centre, beam_aperture(c.DISK_RADIUS, slit, width, height))
+
+    def test_at_the_inner_edge_is_the_default(self):
+        from chopcal.lib import beam_aperture
+        self.assertEqual(beam_aperture(0.35, 0.05, 0.03, 0.04, at='inner'),
+                         beam_aperture(0.35, 0.05, 0.03, 0.04))
+
+    def test_anywhere_else_is_refused(self):
+        from chopcal.lib import beam_aperture
+        with self.assertRaises(ValueError):
+            beam_aperture(0.35, 0.05, 0.03, 0.04, at='outer')
+
 
 class BifrostAperturesTestCase(unittest.TestCase):
     """`bifrost` describes the real beam by default, and the pencil one on request."""

@@ -62,16 +62,28 @@ namespace chopcal {
  *
  * Taking the width over the beam-crossing radius instead, `window_width / beam_centre`,
  * misses the height entirely and comes out low -- 11.4 degrees against 13.4 for the
- * BIFROST bandwidth disks.
+ * BIFROST bandwidth disks -- as the edge of the region a train transmits.
+ *
+ * It is the right width for something else, though, which is what `at_centre` gives. A
+ * radial edge crossing a uniformly lit window passes a fraction of it that grows linearly
+ * with `beam_centre * tan(angle)` while the edge spans the window's full height, so the
+ * linear ramp a weighted transmission models has the width the window subtends at its
+ * centre. The inner-corner angle still bounds where anything gets through; beyond the
+ * centre angle the remaining sliver is quadratic and small. Against McStas with the real
+ * window geometry, the centre angle fits a BIFROST train's arrival times to within
+ * counting error and the inner one leaves the tails of the profile 6-18% low.
  *
  * @param radius Disk radius, m
  * @param slit_height Radial extent of the opening cut in the disk, m
  * @param window_width Width of the beam where it crosses the disk, m
  * @param window_height Radial extent of that beam, m
+ * @param at_centre Take the angle at the beam centre, for the ramp of a weighted
+ *                  transmission, rather than at the window's inner edge
  * @return The angular width of the beam on the disk, in degrees
  */
 inline double beam_aperture(const double radius, const double slit_height,
-                            const double window_width, const double window_height) {
+                            const double window_width, const double window_height,
+                            const bool at_centre = false) {
   if (window_width <= 0) return 0.0;
   const double beam_centre = radius - slit_height / 2.0;
   const double inner = beam_centre - window_height / 2.0;
@@ -82,7 +94,7 @@ inline double beam_aperture(const double radius, const double slit_height,
         + " m disk reaches the spindle; there is no radius to take an aperture at.");
   }
   return 2.0 * constants::DEGREES_PER_TURN / 2.0 / constants::PI
-         * std::atan2(window_width / 2.0, inner);
+         * std::atan2(window_width / 2.0, at_centre ? beam_centre : inner);
 }
 
 /** A disk chopper, owning its slit edges.
