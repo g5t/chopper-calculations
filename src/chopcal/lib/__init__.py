@@ -1,4 +1,5 @@
 from enum import IntEnum
+from typing import NamedTuple
 
 from chopcal._chopper_lib_impl import (
     Chopper,
@@ -418,15 +419,52 @@ def _region_arrivals(region, signal, inverse_velocities, times, distance, arriva
                             float(period or 0.0))
 
 
+class ArrivalMoments(NamedTuple):
+    """What reaches a distance in each arrival-time bin: how much, and at what wavelength.
+
+    `amount` is in the units of the signal; `wavelength` and `sigma` are the mean and
+    standard deviation of wavelength over it, in angstrom, NaN where nothing arrives.
+    """
+    amount: object
+    wavelength: object
+    sigma: object
+
+
+def _region_arrival_moments(region, signal, inverse_velocities, times, distance,
+                            arrival_times, period=None):
+    """The amount reaching `distance` in each arrival-time bin, with the mean and spread
+    of its wavelength -- the numbers a wavelength lookup table stores.
+
+    The same integration as :meth:`arrivals`, summed over inverse velocity, but each
+    piece of the region contributes its own exact first and second moments rather than
+    its cell's centre. So the mean and spread are exact for the gridded source however
+    coarse its grid: coarsening loses only how well the grid describes the source.
+
+    `signal`, the edges, `distance` and `period` are as :meth:`arrivals` takes them.
+    Returns an :class:`ArrivalMoments` of three numpy arrays, one value per arrival bin.
+    """
+    if period is not None and not period > 0:
+        raise ValueError(f'a period folds arrival times, so it must be positive; got {period}')
+    np = _numpy()
+    amount, mean, sigma = region._arrival_moments(
+        _as_signal(signal), _as_edges(inverse_velocities), _as_edges(times), float(distance),
+        _as_edges(arrival_times), float(period or 0.0))
+    per_angstrom = wavelength_to_inverse_velocity(1.0)
+    return ArrivalMoments(np.asarray(amount), np.asarray(mean) / per_angstrom,
+                          np.asarray(sigma) / per_angstrom)
+
+
 Region.coverage = _region_coverage
 Region.integrate = _region_integrate
 Region.arrivals = _region_arrivals
+Region.arrival_moments = _region_arrival_moments
 
 # The same three for a weighted region: each piece counts by the integral of its
 # transmission rather than its area, so a cell half on a ramp counts for what gets through.
 WeightedRegion.coverage = _region_coverage
 WeightedRegion.integrate = _region_integrate
 WeightedRegion.arrivals = _region_arrivals
+WeightedRegion.arrival_moments = _region_arrival_moments
 
 
 def _sample(sampler, count, generator=None):
@@ -455,6 +493,7 @@ RegionSampler.sample = _sample
 
 
 __all__ = [
+    'ArrivalMoments',
     'Chopper',
     'ChopperSet',
     'Polygon',

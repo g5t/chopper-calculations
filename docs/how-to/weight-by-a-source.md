@@ -46,6 +46,26 @@ well. `period` folds arrival times into one frame, as a detector's `event_time_o
 does; without it, give arrival bins that reach the slowest neutron. Distance 0 gives the
 emission times back.
 
+## The mean and spread in each arrival bin
+
+A wavelength lookup table stores, for each arrival time at each distance, the mean
+wavelength of what arrives and its spread. `arrival_moments` gives exactly that, one value
+per arrival bin:
+
+```python
+--8<-- "weight_by_source.py:moments"
+```
+
+```
+busiest bin 123.2 ms: 3.0061 ± 0.0023 Å
+```
+
+Each piece of the region contributes its own first and second moments, integrated over
+the clipped polygon, rather than its cell's centre. So the mean and spread are exact for
+the gridded source on any grid, and a coarse grid loses only how well it describes the
+source. Without choppers, at 28.7 m from an ESS source, binning the source at 0.2 Å by
+100 µs instead of `tof`'s own 0.02 Å by 6 µs moves the mean by at most 0.002 Å.
+
 Every neutron is given one flight path. A guide's spread of paths smears arrival times,
 and is not included here.
 

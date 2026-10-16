@@ -1,4 +1,7 @@
 #include <algorithm>
+#include <array>
+#include <limits>
+#include <tuple>
 #include <cmath>
 #include <memory>
 #include <optional>
@@ -222,6 +225,109 @@ f64_out grid_arrivals(const chopper_weighted_polygon * polygons, const size_t co
   return array;
 }
 
+/** An amount with the mean and spread of a coordinate over it, mergeable.
+ *
+ * Kept as a mean and a sum of squared deviations rather than raw sums of x and x^2: the
+ * spread of a wavelength is a few percent of its value, and E[x^2] - E[x]^2 would spend
+ * most of a double's digits cancelling. Merged by Chan et al.'s pairwise update.
+ */
+struct Moments {
+  double amount{0};
+  double mean{0};
+  double squares{0};   // sum of weight * (x - mean)^2
+
+  void merge(const double other_amount, const double other_mean,
+             const double other_squares) {
+    if (!(other_amount > 0)) return;
+    const double total = amount + other_amount;
+    const double delta = other_mean - mean;
+    mean += delta * other_amount / total;
+    squares += other_squares + delta * delta * amount * other_amount / total;
+    amount = total;
+  }
+};
+
+/** The integral over a piece of its transmission times (x - centre)^k, k = 0, 1, 2. */
+std::array<double, 3> piece_moments(const chopper_weighted_polygon & piece,
+                                    const double centre) {
+  if (piece.factor_count + 2 > CHOPPER_WEIGHT_MAX_FACTORS) {
+    throw std::runtime_error(
+        "A piece lies on the ramps of too many groups to take its moments; chopper-lib's "
+        "CHOPPER_WEIGHT_MAX_FACTORS leaves no room for the two extra factors");
+  }
+  const chopper_affine offset{1.0, 0.0, -centre};   // inverse_velocity - centre
+  chopper_weighted_polygon once = piece;
+  once.factor[once.factor_count++] = offset;
+  chopper_weighted_polygon twice = once;
+  twice.factor[twice.factor_count++] = offset;
+  return {chopper_weighted_polygon_integral(&piece), chopper_weighted_polygon_integral(&once),
+          chopper_weighted_polygon_integral(&twice)};
+}
+
+/** The amount reaching each arrival-time bin at `distance`, with the exact mean and
+ * standard deviation of inverse velocity over it.
+ *
+ * As `grid_arrivals`, but each piece contributes its own first and second moments in
+ * inverse velocity -- integrated over the clipped polygon, not taken at its cell's
+ * centre -- so a coarse source grid costs accuracy only through how well it describes the
+ * source, not through where within a cell a neutron is placed.
+ */
+std::tuple<std::vector<double>, std::vector<double>, std::vector<double>> grid_moments(
+    const chopper_weighted_polygon * polygons, const size_t count, const f64_2d & signal,
+    const f64_1d & inverse_velocities, const f64_1d & times, const double distance,
+    const f64_1d & arrival_times, const double period) {
+  const auto columns = bin_count(inverse_velocities, "inverse_velocities");
+  const auto rows = bin_count(times, "times");
+  const auto bins = bin_count(arrival_times, "arrival_times");
+  if (signal.shape(0) != rows || signal.shape(1) != columns) {
+    throw std::invalid_argument(
+        "A signal over these edges is (" + std::to_string(rows) + ", "
+        + std::to_string(columns) + "); got (" + std::to_string(signal.shape(0)) + ", "
+        + std::to_string(signal.shape(1)) + ")");
+  }
+  if (period < 0.0) {
+    throw std::invalid_argument("A period folds arrival times, so it must be positive");
+  }
+  const double * u = inverse_velocities.data();
+  const double * t = times.data();
+  const double * edges = arrival_times.data();
+  const double * amount = signal.data();
+  std::vector<Moments> out(bins);
+  for_each_cell_piece(polygons, count, u, columns, t, rows,
+                      [&](unsigned r, unsigned c, const chopper_weighted_polygon & piece) {
+    const double cell = amount[r * columns + c];
+    if (cell == 0.0) return;
+    const double density = cell / ((u[c + 1] - u[c]) * (t[r + 1] - t[r]));
+    const double centre = 0.5 * (u[c] + u[c + 1]);
+    double lo = 0, hi = 0;
+    chopper_polygon_extent(&piece.polygon, distance, 1.0, &lo, &hi);
+    const long k0 = period > 0.0 ? static_cast<long>(std::floor(lo / period)) : 0;
+    const long k1 = period > 0.0 ? static_cast<long>(std::floor(hi / period)) : 0;
+    for (long k = k0; k <= k1; ++k) {
+      const double shift = static_cast<double>(k) * period;
+      const auto [b0, b1] = bins_spanning(edges, bins, lo - shift, hi - shift);
+      for (unsigned b = b0; b < b1; ++b) {
+        chopper_weighted_polygon arriving = piece;
+        if (!clip_slab(arriving.polygon, distance, 1.0, edges[b] + shift,
+                       edges[b + 1] + shift)) continue;
+        const auto [m0, m1, m2] = piece_moments(arriving, centre);
+        if (!(m0 > 0)) continue;
+        const double offset = m1 / m0;
+        out[b].merge(density * m0, centre + offset,
+                     density * std::max(m2 - m1 * offset, 0.0));
+      }
+    }
+  });
+  std::vector<double> total(bins), mean(bins), sigma(bins);
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  for (unsigned b = 0; b < bins; ++b) {
+    total[b] = out[b].amount;
+    mean[b] = out[b].amount > 0 ? out[b].mean : nan;
+    sigma[b] = out[b].amount > 0 ? std::sqrt(out[b].squares / out[b].amount) : nan;
+  }
+  return {std::move(total), std::move(mean), std::move(sigma)};
+}
+
 /** chopper-lib's mask sampler, owning what `chopper_mask_sampler_make` allocated.
  *
  * The C hands back six raw pointers and a `_free`; this ties them to a Python object's
@@ -401,6 +507,14 @@ class Region {
                          distance, arrival_times, period);
   }
 
+  [[nodiscard]] auto arrival_moments(const f64_2d & signal, const f64_1d & inverse_velocities,
+                                     const f64_1d & times, const double distance,
+                                     const f64_1d & arrival_times, const double period) const {
+    const auto pieces = weighted();
+    return grid_moments(pieces.data(), pieces.size(), signal, inverse_velocities, times,
+                        distance, arrival_times, period);
+  }
+
   [[nodiscard]] std::vector<std::pair<double, double>> inverse_velocity_ranges() const {
     const range_set ranges = chopper_polygon_set_inverse_velocity_ranges(&set_);
     std::vector<std::pair<double, double>> out;
@@ -524,6 +638,13 @@ class WeightedRegion {
                                  const f64_1d & arrival_times, const double period) const {
     return grid_arrivals(set_.polygon, set_.count, signal, inverse_velocities, times,
                          distance, arrival_times, period);
+  }
+
+  [[nodiscard]] auto arrival_moments(const f64_2d & signal, const f64_1d & inverse_velocities,
+                                     const f64_1d & times, const double distance,
+                                     const f64_1d & arrival_times, const double period) const {
+    return grid_moments(set_.polygon, set_.count, signal, inverse_velocities, times,
+                        distance, arrival_times, period);
   }
 };
 
@@ -907,6 +1028,8 @@ nb::class_<Region>(m, "Region",
       .def("_coverage", &Region::coverage, "inverse_velocities"_a, "times"_a)
       .def("_arrivals", &Region::arrivals, "signal"_a, "inverse_velocities"_a, "times"_a,
            "distance"_a, "arrival_times"_a, "period"_a)
+      .def("_arrival_moments", &Region::arrival_moments, "signal"_a, "inverse_velocities"_a,
+           "times"_a, "distance"_a, "arrival_times"_a, "period"_a)
       .def("inverse_velocity_ranges", &Region::inverse_velocity_ranges,
            "The bands the region covers in inverse velocity, sorted and merged, s/m.\n\n"
            "The projection of the intersection, where `inverse_velocity_windows` gives\n"
@@ -960,7 +1083,9 @@ nb::class_<WeightedRegion>(m, "WeightedRegion",
                    "a*inverse_velocity + b*time + c; the transmission is their product.")
       .def("_coverage", &WeightedRegion::coverage, "inverse_velocities"_a, "times"_a)
       .def("_arrivals", &WeightedRegion::arrivals, "signal"_a, "inverse_velocities"_a,
-           "times"_a, "distance"_a, "arrival_times"_a, "period"_a);
+           "times"_a, "distance"_a, "arrival_times"_a, "period"_a)
+      .def("_arrival_moments", &WeightedRegion::arrival_moments, "signal"_a,
+           "inverse_velocities"_a, "times"_a, "distance"_a, "arrival_times"_a, "period"_a);
 
 nb::class_<RegionSampler>(m, "RegionSampler",
       "Draws (inverse velocity, time) pairs uniformly from a transmitted region.\n\n"
