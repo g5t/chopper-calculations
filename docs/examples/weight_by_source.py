@@ -34,3 +34,16 @@ print(at_sample.shape, f'peak at {peak * 1e3:.1f} ms')
 # --8<-- [end:arrivals]
 
 assert np.isclose(at_sample.sum(), region.integrate(signal, inverse_velocities, times))
+
+# --8<-- [start:weighted]
+# the pulse-shaping pair and the bandwidth pair each share a housing
+weighted = source.transmit_weighted(train, groups=[0, 0, 1, 2, 3, 3])
+point = source.transmit(list(chopcal.bifrost(wavelength_max=3.0, apertures=False).values()))
+print(f'support {region.area:.4e}, point beam {point.area:.4e}, '
+      f'weighted {weighted.integral:.4e} s^2/m')
+print(f'transmitted {weighted.integrate(signal, inverse_velocities, times):.4f}')
+softer = weighted.arrivals(signal, inverse_velocities, times, 162.0, arrival_times,
+                           period=frame)
+# --8<-- [end:weighted]
+
+assert np.all(softer <= at_sample + 1e-12)

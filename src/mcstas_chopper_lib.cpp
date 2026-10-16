@@ -121,6 +121,107 @@ bool clip_slab(chopper_polygon & polygon, const double alpha, const double beta,
   return polygon.count != 0;
 }
 
+/** Call `f(row, column, piece)` for each piece of these polygons in a grid cell.
+ *
+ * Rows are emission-time bins and columns inverse-velocity bins, as the masks have them.
+ * Each polygon is cut into rows first and each row into cells, so only the cells a
+ * polygon's own extent reaches are visited. A piece keeps its polygon's factors: clipping
+ * moves the boundary, not the transmission inside it.
+ */
+template <class F>
+void for_each_cell_piece(const chopper_weighted_polygon * polygons, const size_t count,
+                         const double * inverse_velocities, const unsigned columns,
+                         const double * times, const unsigned rows, F && f) {
+  for (size_t i = 0; i < count; ++i) {
+    double lo = 0, hi = 0;
+    chopper_polygon_extent(&polygons[i].polygon, 0.0, 1.0, &lo, &hi);
+    const auto [r0, r1] = bins_spanning(times, rows, lo, hi);
+    for (unsigned r = r0; r < r1; ++r) {
+      chopper_weighted_polygon row = polygons[i];
+      if (!clip_slab(row.polygon, 0.0, 1.0, times[r], times[r + 1])) continue;
+      chopper_polygon_extent(&row.polygon, 1.0, 0.0, &lo, &hi);
+      const auto [c0, c1] = bins_spanning(inverse_velocities, columns, lo, hi);
+      for (unsigned c = c0; c < c1; ++c) {
+        chopper_weighted_polygon piece = row;
+        if (clip_slab(piece.polygon, 1.0, 0.0, inverse_velocities[c],
+                      inverse_velocities[c + 1])) {
+          f(r, c, piece);
+        }
+      }
+    }
+  }
+}
+
+/** The transmission-weighted fraction of each (time, inverse velocity) cell covered:
+ * each piece's exact integral of transmission over the cell, over the cell's area. */
+f64_out grid_coverage(const chopper_weighted_polygon * polygons, const size_t count,
+                      const f64_1d & inverse_velocities, const f64_1d & times) {
+  const auto columns = bin_count(inverse_velocities, "inverse_velocities");
+  const auto rows = bin_count(times, "times");
+  const double * u = inverse_velocities.data();
+  const double * t = times.data();
+  auto [array, out] = make_f64_array(rows, columns);
+  for_each_cell_piece(polygons, count, u, columns, t, rows,
+                      [&](unsigned r, unsigned c, const chopper_weighted_polygon & piece) {
+    out[r * columns + c] += chopper_weighted_polygon_integral(&piece)
+                            / ((u[c + 1] - u[c]) * (t[r + 1] - t[r]));
+  });
+  return array;
+}
+
+/** What a gridded source puts through these polygons, by arrival time at `distance`.
+ *
+ * `signal` is the amount in each (time, inverse velocity) cell, spread evenly over it. A
+ * neutron emitted at `(a, t)` reaches `distance` at `t + distance*a`; that shear keeps
+ * areas, so the amount in an arrival bin is the density times the integral of the
+ * transmission over the piece between two lines of constant arrival time. With `period`
+ * positive, arrival times are folded into `[0, period)` first, as a detector folds them.
+ */
+f64_out grid_arrivals(const chopper_weighted_polygon * polygons, const size_t count,
+                      const f64_2d & signal, const f64_1d & inverse_velocities,
+                      const f64_1d & times, const double distance,
+                      const f64_1d & arrival_times, const double period) {
+  const auto columns = bin_count(inverse_velocities, "inverse_velocities");
+  const auto rows = bin_count(times, "times");
+  const auto bins = bin_count(arrival_times, "arrival_times");
+  if (signal.shape(0) != rows || signal.shape(1) != columns) {
+    throw std::invalid_argument(
+        "A signal over these edges is (" + std::to_string(rows) + ", "
+        + std::to_string(columns) + "); got (" + std::to_string(signal.shape(0)) + ", "
+        + std::to_string(signal.shape(1)) + ")");
+  }
+  if (period < 0.0) {
+    throw std::invalid_argument("A period folds arrival times, so it must be positive");
+  }
+  const double * u = inverse_velocities.data();
+  const double * t = times.data();
+  const double * edges = arrival_times.data();
+  const double * amount = signal.data();
+  auto [array, out] = make_f64_array(bins, columns);
+  for_each_cell_piece(polygons, count, u, columns, t, rows,
+                      [&](unsigned r, unsigned c, const chopper_weighted_polygon & piece) {
+    const double cell = amount[r * columns + c];
+    if (cell == 0.0) return;
+    const double density = cell / ((u[c + 1] - u[c]) * (t[r + 1] - t[r]));
+    double lo = 0, hi = 0;
+    chopper_polygon_extent(&piece.polygon, distance, 1.0, &lo, &hi);
+    const long k0 = period > 0.0 ? static_cast<long>(std::floor(lo / period)) : 0;
+    const long k1 = period > 0.0 ? static_cast<long>(std::floor(hi / period)) : 0;
+    for (long k = k0; k <= k1; ++k) {
+      const double shift = static_cast<double>(k) * period;
+      const auto [b0, b1] = bins_spanning(edges, bins, lo - shift, hi - shift);
+      for (unsigned b = b0; b < b1; ++b) {
+        chopper_weighted_polygon arriving = piece;
+        if (clip_slab(arriving.polygon, distance, 1.0, edges[b] + shift,
+                      edges[b + 1] + shift)) {
+          out[b * columns + c] += density * chopper_weighted_polygon_integral(&arriving);
+        }
+      }
+    }
+  });
+  return array;
+}
+
 /** chopper-lib's mask sampler, owning what `chopper_mask_sampler_make` allocated.
  *
  * The C hands back six raw pointers and a `_free`; this ties them to a Python object's
@@ -276,99 +377,28 @@ class Region {
     return out;
   }
 
-  /** Call `f(row, column, piece)` for each piece of the region in a grid cell.
-   *
-   * Rows are emission-time bins and columns inverse-velocity bins, as the masks have
-   * them. Each polygon is cut into rows first and each row into cells, so only the
-   * cells a polygon's own extent reaches are visited.
-   */
-  template <class F>
-  void for_each_cell_piece(const double * inverse_velocities, const unsigned columns,
-                           const double * times, const unsigned rows, F && f) const {
+  /// Its pieces as weighted polygons, each certain to pass: what the grid code reads.
+  [[nodiscard]] std::vector<chopper_weighted_polygon> weighted() const {
+    std::vector<chopper_weighted_polygon> out(set_.count);
     for (unsigned i = 0; i < set_.count; ++i) {
-      double lo = 0, hi = 0;
-      chopper_polygon_extent(&set_.polygon[i], 0.0, 1.0, &lo, &hi);
-      const auto [r0, r1] = bins_spanning(times, rows, lo, hi);
-      for (unsigned r = r0; r < r1; ++r) {
-        chopper_polygon row = set_.polygon[i];
-        if (!clip_slab(row, 0.0, 1.0, times[r], times[r + 1])) continue;
-        chopper_polygon_extent(&row, 1.0, 0.0, &lo, &hi);
-        const auto [c0, c1] = bins_spanning(inverse_velocities, columns, lo, hi);
-        for (unsigned c = c0; c < c1; ++c) {
-          chopper_polygon piece = row;
-          if (clip_slab(piece, 1.0, 0.0, inverse_velocities[c], inverse_velocities[c + 1])) {
-            f(r, c, piece);
-          }
-        }
-      }
+      out[i].polygon = set_.polygon[i];
+      out[i].factor_count = 0;
     }
+    return out;
   }
 
-  /// The fraction of each (time, inverse velocity) cell the region covers, exactly.
   [[nodiscard]] f64_out coverage(const f64_1d & inverse_velocities,
                                  const f64_1d & times) const {
-    const auto columns = bin_count(inverse_velocities, "inverse_velocities");
-    const auto rows = bin_count(times, "times");
-    const double * u = inverse_velocities.data();
-    const double * t = times.data();
-    auto [array, out] = make_f64_array(rows, columns);
-    for_each_cell_piece(u, columns, t, rows, [&](unsigned r, unsigned c,
-                                                 const chopper_polygon & piece) {
-      out[r * columns + c] += chopper_polygon_area(&piece)
-                              / ((u[c + 1] - u[c]) * (t[r + 1] - t[r]));
-    });
-    return array;
+    const auto pieces = weighted();
+    return grid_coverage(pieces.data(), pieces.size(), inverse_velocities, times);
   }
 
-  /** What a gridded source puts through the region, by arrival time at `distance`.
-   *
-   * `signal` is the amount in each (time, inverse velocity) cell, spread evenly over it.
-   * A neutron emitted at `(a, t)` reaches `distance` at `t + distance*a`; that shear
-   * keeps areas, so the amount in an arrival bin is the density times the area of the
-   * piece between two lines of constant arrival time. With `period` positive, arrival
-   * times are folded into `[0, period)` first, as a detector folds them into its frame.
-   */
   [[nodiscard]] f64_out arrivals(const f64_2d & signal, const f64_1d & inverse_velocities,
                                  const f64_1d & times, const double distance,
                                  const f64_1d & arrival_times, const double period) const {
-    const auto columns = bin_count(inverse_velocities, "inverse_velocities");
-    const auto rows = bin_count(times, "times");
-    const auto bins = bin_count(arrival_times, "arrival_times");
-    if (signal.shape(0) != rows || signal.shape(1) != columns) {
-      throw std::invalid_argument(
-          "A signal over these edges is (" + std::to_string(rows) + ", "
-          + std::to_string(columns) + "); got (" + std::to_string(signal.shape(0)) + ", "
-          + std::to_string(signal.shape(1)) + ")");
-    }
-    if (period < 0.0) {
-      throw std::invalid_argument("A period folds arrival times, so it must be positive");
-    }
-    const double * u = inverse_velocities.data();
-    const double * t = times.data();
-    const double * edges = arrival_times.data();
-    const double * amount = signal.data();
-    auto [array, out] = make_f64_array(bins, columns);
-    for_each_cell_piece(u, columns, t, rows, [&](unsigned r, unsigned c,
-                                                 const chopper_polygon & piece) {
-      const double cell = amount[r * columns + c];
-      if (cell == 0.0) return;
-      const double density = cell / ((u[c + 1] - u[c]) * (t[r + 1] - t[r]));
-      double lo = 0, hi = 0;
-      chopper_polygon_extent(&piece, distance, 1.0, &lo, &hi);
-      const long k0 = period > 0.0 ? static_cast<long>(std::floor(lo / period)) : 0;
-      const long k1 = period > 0.0 ? static_cast<long>(std::floor(hi / period)) : 0;
-      for (long k = k0; k <= k1; ++k) {
-        const double shift = static_cast<double>(k) * period;
-        const auto [b0, b1] = bins_spanning(edges, bins, lo - shift, hi - shift);
-        for (unsigned b = b0; b < b1; ++b) {
-          chopper_polygon arriving = piece;
-          if (clip_slab(arriving, distance, 1.0, edges[b] + shift, edges[b + 1] + shift)) {
-            out[b * columns + c] += density * chopper_polygon_area(&arriving);
-          }
-        }
-      }
-    });
-    return array;
+    const auto pieces = weighted();
+    return grid_arrivals(pieces.data(), pieces.size(), signal, inverse_velocities, times,
+                         distance, arrival_times, period);
   }
 
   [[nodiscard]] std::vector<std::pair<double, double>> inverse_velocity_ranges() const {
@@ -400,6 +430,100 @@ class Region {
                                         sampled ? &*sampled : nullptr)) {
       throw std::runtime_error("Could not open " + path + " for writing");
     }
+  }
+};
+
+/** chopper-lib's weighted region: the same convex pieces, each carrying how likely a
+ * neutron there is to get through, as a product of affine factors. */
+class WeightedRegion {
+  chopper_weighted_set set_;
+
+  void append(const chopper_weighted_set & other) {
+    for (unsigned i = 0; i < other.count; ++i) {
+      if (!chopper_weighted_set_add(&set_, &other.polygon[i])) {
+        throw std::runtime_error("Out of memory copying a weighted region");
+      }
+    }
+  }
+
+ public:
+  WeightedRegion() : set_(chopper_weighted_set_empty()) {}
+  WeightedRegion(const WeightedRegion & other) : set_(chopper_weighted_set_empty()) {
+    append(other.set_);
+  }
+  WeightedRegion & operator=(const WeightedRegion & other) {
+    if (this != &other) {
+      chopper_weighted_set_free(&set_);
+      append(other.set_);
+    }
+    return *this;
+  }
+  ~WeightedRegion() { chopper_weighted_set_free(&set_); }
+
+  /// Every piece of a region, each certain to pass: where a weighted transmission starts.
+  static WeightedRegion from_region(const Region & region) {
+    WeightedRegion out;
+    if (!chopper_weighted_set_add_polygons(&out.set_, &region.raw())) {
+      throw std::runtime_error("Out of memory weighting a region");
+    }
+    return out;
+  }
+
+  /// What a train leaves of this region, weighted. A new region; this one is unchanged.
+  [[nodiscard]] WeightedRegion transmit(const std::vector<Chopper> & choppers,
+                                        const std::vector<unsigned> & groups) const {
+    if (!groups.empty() && groups.size() != choppers.size()) {
+      throw std::invalid_argument(
+          "One group per chopper, or none at all; got " + std::to_string(groups.size())
+          + " for " + std::to_string(choppers.size()) + " choppers");
+    }
+    WeightedRegion out(*this);
+    const auto pars = chopcal::c_structs(choppers);
+    if (!chopper_weighted_set_transmit_train(&out.set_, static_cast<unsigned>(pars.size()),
+                                             pars.data(),
+                                             groups.empty() ? nullptr : groups.data())) {
+      throw std::runtime_error(
+          "chopper-lib refused to weight this region and printed the reason: a group whose "
+          "choppers are not listed together, a polygon needing more vertices than it has "
+          "room for, or a piece on the ramps of more groups than it can follow.");
+    }
+    return out;
+  }
+
+  [[nodiscard]] unsigned count() const { return set_.count; }
+  [[nodiscard]] double integral() const { return chopper_weighted_set_integral(&set_); }
+  [[nodiscard]] double transmission(const double inverse_velocity, const double time) const {
+    return chopper_weighted_set_transmission(&set_, inverse_velocity, time);
+  }
+
+  /// Each piece as its polygon and its factors, `(a, b, c)` for `a*iv + b*t + c`.
+  [[nodiscard]] std::vector<std::pair<chopper_polygon, std::vector<std::tuple<double, double,
+                                                                              double>>>>
+  pieces() const {
+    std::vector<std::pair<chopper_polygon,
+                          std::vector<std::tuple<double, double, double>>>> out;
+    out.reserve(set_.count);
+    for (unsigned i = 0; i < set_.count; ++i) {
+      const auto & piece = set_.polygon[i];
+      std::vector<std::tuple<double, double, double>> factors;
+      for (unsigned k = 0; k < piece.factor_count; ++k) {
+        factors.emplace_back(piece.factor[k].a, piece.factor[k].b, piece.factor[k].c);
+      }
+      out.emplace_back(piece.polygon, std::move(factors));
+    }
+    return out;
+  }
+
+  [[nodiscard]] f64_out coverage(const f64_1d & inverse_velocities,
+                                 const f64_1d & times) const {
+    return grid_coverage(set_.polygon, set_.count, inverse_velocities, times);
+  }
+
+  [[nodiscard]] f64_out arrivals(const f64_2d & signal, const f64_1d & inverse_velocities,
+                                 const f64_1d & times, const double distance,
+                                 const f64_1d & arrival_times, const double period) const {
+    return grid_arrivals(set_.polygon, set_.count, signal, inverse_velocities, times,
+                         distance, arrival_times, period);
   }
 };
 
@@ -752,6 +876,14 @@ nb::class_<Region>(m, "Region",
            "evenly, it opens each slab into a wedge. It gives the *support* under that\n"
            "uncertainty rather than a distribution over it, the same bargain\n"
            "`Chopper.aperture` makes for the width of the beam.")
+      .def("transmit_weighted",
+           [](const Region & region, const std::vector<Chopper> & choppers,
+              const std::vector<unsigned> & groups) {
+             return WeightedRegion::from_region(region).transmit(choppers, groups);
+           },
+           "choppers"_a, "groups"_a = std::vector<unsigned>{},
+           "What a train leaves of this region, weighted by how likely each neutron is to\n"
+           "get through, as a WeightedRegion; see that class.")
       .def("_coverage", &Region::coverage, "inverse_velocities"_a, "times"_a)
       .def("_arrivals", &Region::arrivals, "signal"_a, "inverse_velocities"_a, "times"_a,
            "distance"_a, "arrival_times"_a, "period"_a)
@@ -782,6 +914,33 @@ nb::class_<Region>(m, "Region",
       .def("__len__", &Region::count)
       .def("__bool__", [](const Region & r) { return r.count() != 0; })
       ;
+
+nb::class_<WeightedRegion>(m, "WeightedRegion",
+      "The region a chopper train transmits, weighted by how likely a neutron is to get\n"
+      "through.\n\n"
+      "With a disc `aperture`, a Region's boundary is where transmission falls to zero.\n"
+      "Inside, an edge sweeping a uniformly lit beam ramps the transmission linearly, and\n"
+      "this carries that ramp: the same convex polygons, each with a product of affine\n"
+      "factors. Discs in one *group* -- a pair sharing a housing -- are crossed at the same\n"
+      "place across the beam, so the group passes the part of the beam open in all of\n"
+      "them: the smaller transmission for a co-rotating pair, and for a counter-rotating\n"
+      "pair a ramp starting at the half-way time and twice as steep. Different groups\n"
+      "multiply. Pieces may overlap where two openings of one disc ramp at once, and their\n"
+      "transmissions add.\n\n"
+      "Make one with `Region.transmit_weighted`.")
+      .def("__len__", &WeightedRegion::count)
+      .def("__bool__", [](const WeightedRegion & r) { return r.count() > 0; })
+      .def_prop_ro("integral", &WeightedRegion::integral,
+                   "The integral of the transmission, s^2/m: the area a uniformly drawn ray\n"
+                   "budget effectively passes. Exact.")
+      .def("transmission", &WeightedRegion::transmission, "inverse_velocity"_a, "time"_a,
+           "The probability a neutron emitted at this (inverse velocity, time) gets through")
+      .def_prop_ro("pieces", &WeightedRegion::pieces,
+                   "Each piece as (Polygon, factors), a factor (a, b, c) being\n"
+                   "a*inverse_velocity + b*time + c; the transmission is their product.")
+      .def("_coverage", &WeightedRegion::coverage, "inverse_velocities"_a, "times"_a)
+      .def("_arrivals", &WeightedRegion::arrivals, "signal"_a, "inverse_velocities"_a,
+           "times"_a, "distance"_a, "arrival_times"_a, "period"_a);
 
 nb::class_<RegionSampler>(m, "RegionSampler",
       "Draws (inverse velocity, time) pairs uniformly from a transmitted region.\n\n"

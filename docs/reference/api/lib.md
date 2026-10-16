@@ -32,6 +32,8 @@ McStas instrument works with rather than a Python reimplementation of them.
 
 ::: chopcal.lib.RegionSampler
 
+::: chopcal.lib.WeightedRegion
+
 ## On a grid
 
 ::: chopcal.lib.inverse_velocity_time_mask

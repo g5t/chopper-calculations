@@ -307,7 +307,8 @@ class OutputTestCase(unittest.TestCase):
 
     def test_the_dict_is_internally_consistent(self):
         data = self.region.to_dict(sampled=self.source)
-        self.assertEqual(data['chopper_lib_version'].split('.')[:2], ['4', '2'])
+        from chopcal.lib import chopper_lib_version
+        self.assertEqual(data['chopper_lib_version'], chopper_lib_version)
         self.assertAlmostEqual(sum(p['area'] for p in data['polygons']),
                                data['transmitted_area'], places=18)
         self.assertAlmostEqual(data['acceptance'],

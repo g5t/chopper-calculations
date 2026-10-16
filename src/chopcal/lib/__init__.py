@@ -16,7 +16,7 @@ from chopcal._chopper_lib_impl import (
     MASK_GROWN,
 )
 from chopcal._chopper_lib_impl import MaskSampler as _MaskSampler
-from chopcal._chopper_lib_impl import Region, RegionSampler
+from chopcal._chopper_lib_impl import Region, RegionSampler, WeightedRegion
 from chopcal._chopper_lib_impl import (
     inverse_velocity_time_mask as _inverse_velocity_time_mask,
     unmasked_probability as _unmasked_probability,
@@ -422,6 +422,12 @@ Region.coverage = _region_coverage
 Region.integrate = _region_integrate
 Region.arrivals = _region_arrivals
 
+# The same three for a weighted region: each piece counts by the integral of its
+# transmission rather than its area, so a cell half on a ramp counts for what gets through.
+WeightedRegion.coverage = _region_coverage
+WeightedRegion.integrate = _region_integrate
+WeightedRegion.arrivals = _region_arrivals
+
 
 def _sample(sampler, count, generator=None):
     """``count`` (inverse_velocity, time) pairs, as two numpy arrays.
@@ -454,6 +460,7 @@ __all__ = [
     'Polygon',
     'Region',
     'RegionSampler',
+    'WeightedRegion',
     'beam_aperture',
     'chopper_lib_version',
     'inverse_velocity_to_wavelength',
