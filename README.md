@@ -27,6 +27,7 @@ Exposes chopper calculations to Python which were otherwise hidden in McStas ins
 |                 | one convex piece of it                                          | `chopcal.lib.Polygon`                  | class     |
 |                 | direct sampling over that region                                | `chopcal.lib.RegionSampler`            | class     |
 |                 | a gridded source through it: coverage, total, arrival times     | `chopcal.lib.Region.coverage`, `.integrate`, `.arrivals` | methods |
+|                 | mean and spread of wavelength in each arrival bin, exactly      | `chopcal.lib.Region.arrival_moments`   | method    |
 |                 | the region weighted by how likely a neutron is to get through   | `chopcal.lib.WeightedRegion`           | class     |
 
 

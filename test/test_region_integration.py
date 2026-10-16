@@ -145,5 +145,73 @@ class ArrivalsTestCase(unittest.TestCase):
         self.assertLess(np.max(np.abs(arrived - counted) / sigma), 5.0)
 
 
+
+@unittest.skipUnless(numpyAvailable, 'needs numpy')
+class ArrivalMomentsTestCase(unittest.TestCase):
+    """The mean and spread of wavelength in each arrival bin, exact for a gridded source."""
+
+    def test_a_sheared_square_has_closed_form_moments(self):
+        """Uniform over a 1 ms/m by 1 ms square, 1 m on: an arrival tau before 1 ms comes
+        from inverse velocities uniform on [0, tau], so over a bin [a, b] the amount goes
+        as (b^2 - a^2)/2, the first moment as (b^3 - a^3)/6 and the second as
+        (b^4 - a^4)/12."""
+        from chopcal.lib import Region, wavelength_to_inverse_velocity
+        region = Region.rectangle(0.0, 1e-3, 0.0, 1e-3)
+        a, b = 2e-4, 7e-4
+        moments = region.arrival_moments([[1.0]], [0.0, 1e-3], [0.0, 1e-3], 1.0, [a, b])
+        zeroth = (b ** 2 - a ** 2) / 2
+        mean = (b ** 3 - a ** 3) / 6 / zeroth
+        sigma = np.sqrt((b ** 4 - a ** 4) / 12 / zeroth - mean ** 2)
+        per_angstrom = wavelength_to_inverse_velocity(1.0)
+        self.assertAlmostEqual(moments.amount[0], zeroth / 1e-6, places=12)
+        self.assertAlmostEqual(moments.wavelength[0] / (mean / per_angstrom), 1.0, places=12)
+        self.assertAlmostEqual(moments.sigma[0] / (sigma / per_angstrom), 1.0, places=10)
+
+    def test_a_uniform_source_gives_the_same_moments_on_any_grid(self):
+        """Nothing about where in a cell a neutron sits is approximated, so cutting a
+        uniform source into a hundred cells changes nothing."""
+        region = bifrost_region()
+        u, t = enclosing_grid(region, columns=10, rows=10)
+        edges = np.linspace(0.06, 0.13, 50)
+        one = region.arrival_moments([[1.0]], [u[0], u[-1]], [t[0], t[-1]], 162.0, edges)
+        many_signal = cell_areas(u, t) / ((u[-1] - u[0]) * (t[-1] - t[0]))
+        many = region.arrival_moments(many_signal, u, t, 162.0, edges)
+        reached = one.amount > 0
+        np.testing.assert_allclose(many.amount, one.amount, rtol=1e-9, atol=1e-15)
+        np.testing.assert_allclose(many.wavelength[reached], one.wavelength[reached], rtol=1e-10)
+        np.testing.assert_allclose(many.sigma[reached], one.sigma[reached], rtol=1e-6)
+
+    def test_the_amount_is_what_arrivals_gives(self):
+        region = bifrost_region()
+        u, t = enclosing_grid(region)
+        signal = np.random.default_rng(7).uniform(size=(len(t) - 1, len(u) - 1))
+        edges = np.linspace(0.0, 1 / 14, 120)
+        moments = region.arrival_moments(signal, u, t, 162.0, edges, period=1 / 14)
+        arrived = region.arrivals(signal, u, t, 162.0, edges, period=1 / 14).sum(axis=1)
+        np.testing.assert_allclose(moments.amount, arrived, rtol=1e-10, atol=1e-15)
+
+    def test_a_bin_nothing_reaches_has_no_wavelength(self):
+        region = bifrost_region()
+        u, t = enclosing_grid(region)
+        moments = region.arrival_moments(np.ones((len(t) - 1, len(u) - 1)), u, t, 162.0,
+                                         [0.0, 1e-3])
+        self.assertEqual(moments.amount[0], 0.0)
+        self.assertTrue(np.isnan(moments.wavelength[0]) and np.isnan(moments.sigma[0]))
+
+    def test_a_weighted_region_has_them_too(self):
+        import chopcal
+        from chopcal.lib import Region
+        train = list(chopcal.bifrost(wavelength_max=3.0).values())
+        weighted = Region.from_wavelengths(*SOURCE).transmit_weighted(train, [0, 0, 1, 2, 3, 3])
+        u, t = enclosing_grid(bifrost_region())
+        signal = np.ones((len(t) - 1, len(u) - 1))
+        edges = np.linspace(0.06, 0.13, 60)
+        moments = weighted.arrival_moments(signal, u, t, 162.0, edges)
+        arrived = weighted.arrivals(signal, u, t, 162.0, edges).sum(axis=1)
+        np.testing.assert_allclose(moments.amount, arrived, rtol=1e-10, atol=1e-15)
+        reached = moments.amount > 0
+        self.assertTrue(np.all(moments.sigma[reached] >= 0))
+
+
 if __name__ == '__main__':
     unittest.main()

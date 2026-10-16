@@ -35,6 +35,18 @@ print(at_sample.shape, f'peak at {peak * 1e3:.1f} ms')
 
 assert np.isclose(at_sample.sum(), region.integrate(signal, inverse_velocities, times))
 
+# --8<-- [start:moments]
+unfolded = np.linspace(0.10, 0.18, 801)               # 0.1 ms bins, no folding
+moments = region.arrival_moments(signal, inverse_velocities, times, 162.0, unfolded)
+busiest = np.nanargmax(moments.amount)
+print(f'busiest bin {unfolded[busiest] * 1e3:.1f} ms: '
+      f'{moments.wavelength[busiest]:.4f} ± {moments.sigma[busiest]:.4f} Å')
+# --8<-- [end:moments]
+
+assert np.allclose(moments.amount,
+                   region.arrivals(signal, inverse_velocities, times, 162.0,
+                                   unfolded).sum(axis=1))
+
 # --8<-- [start:weighted]
 from chopcal import constants as c
 from chopcal.lib import Chopper, beam_aperture
