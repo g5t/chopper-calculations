@@ -36,8 +36,19 @@ print(at_sample.shape, f'peak at {peak * 1e3:.1f} ms')
 assert np.isclose(at_sample.sum(), region.integrate(signal, inverse_velocities, times))
 
 # --8<-- [start:weighted]
+from chopcal import constants as c
+from chopcal.lib import Chopper, beam_aperture
+
+# the ramp is set by the angle the beam subtends at its centre, not at its inner corner
+narrow = beam_aperture(c.DISK_RADIUS, c.NARROW_SLIT_HEIGHT, c.NARROW_WINDOW_WIDTH,
+                       c.NARROW_WINDOW_HEIGHT, at='centre')
+wide = beam_aperture(c.DISK_RADIUS, c.BANDWIDTH_SLIT_HEIGHT, c.BANDWIDTH_WINDOW_WIDTH,
+                     c.BANDWIDTH_WINDOW_HEIGHT, at='centre')
+ramped = [Chopper(d.speed, d.delay, d.beam, list(d.edges), d.path,
+                  wide if name.startswith('bw') else narrow)
+          for name, d in chopcal.bifrost(wavelength_max=3.0).items()]
 # the pulse-shaping pair and the bandwidth pair each share a housing
-weighted = source.transmit_weighted(train, groups=[0, 0, 1, 2, 3, 3])
+weighted = source.transmit_weighted(ramped, groups=[0, 0, 1, 2, 3, 3])
 point = source.transmit(list(chopcal.bifrost(wavelength_max=3.0, apertures=False).values()))
 print(f'support {region.area:.4e}, point beam {point.area:.4e}, '
       f'weighted {weighted.integral:.4e} s^2/m')

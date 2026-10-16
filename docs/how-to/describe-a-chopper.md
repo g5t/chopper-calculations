@@ -66,6 +66,12 @@ The largest angle belongs to the window's **inner** corners, nearest the spindle
 given width subtends the most angle. Taking the width over the beam-crossing radius instead
 misses the height entirely: 11.4° where the real figure is 13.4°.
 
+That is the right width for where anything gets through, which is what `Region.transmit`
+builds. For *how likely* a neutron is to get through, `Region.transmit_weighted` wants
+`beam_aperture(..., at='centre')`, the angle at the beam centre. While an edge crosses the
+window, the fraction of the beam it has passed grows linearly at the rate the centre sets;
+see [Weight the region by a source](weight-by-a-source.md#a-finite-beam).
+
 Leave `aperture` at 0 for a pencil beam, which is what every field but this one describes.
 
 ## A parked disc

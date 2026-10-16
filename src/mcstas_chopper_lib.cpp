@@ -730,8 +730,19 @@ m.def("wavelength_limits",
       "mask is right."
 );
 
-m.def("beam_aperture", &chopcal::beam_aperture,
-      "radius"_a, "slit_height"_a, "window_width"_a, "window_height"_a,
+m.def("beam_aperture",
+      [](const double radius, const double slit_height, const double window_width,
+         const double window_height, const std::string & at) {
+        if (at != "inner" && at != "centre") {
+          throw std::invalid_argument(
+              "at is where across the beam window the angle is taken: 'inner' for the "
+              "edge of the region a train transmits, 'centre' for the ramp of a weighted "
+              "transmission; got '" + at + "'");
+        }
+        return chopcal::beam_aperture(radius, slit_height, window_width, window_height,
+                                      at == "centre");
+      },
+      "radius"_a, "slit_height"_a, "window_width"_a, "window_height"_a, "at"_a = "inner",
       "The angular width of a beam where it crosses a disk, in degrees.\n\n"
       "This is what `Chopper.aperture` wants. An opening is angular and a beam is not, so\n"
       "a neutron crossing to one side of the beam centre meets an edge early or late; the\n"
@@ -740,7 +751,15 @@ m.def("beam_aperture", &chopcal::beam_aperture,
       "`slit_height` is the radial extent of the opening cut in the disk -- McStas\n"
       "`DiskChopper`'s `yheight`, which puts the beam centre at `radius - yheight/2`.\n"
       "`window_width` and `window_height` describe the beam inside it, which is smaller.\n\n"
-      "All four lengths in metres; the answer is in degrees.")
+      "All four lengths in metres; the answer is in degrees.\n\n"
+      "`at` is where across the window the angle is taken. `'inner'`, the default, is\n"
+      "the corner nearest the spindle: the last part of the beam an edge clears, and so\n"
+      "the edge of the region `Region.transmit` builds. `'centre'` is the beam centre:\n"
+      "while an edge crosses the window the fraction it has passed grows linearly at the\n"
+      "rate the centre sets, which is the ramp `Region.transmit_weighted` models. Use\n"
+      "`'centre'` for the choppers handed to `transmit_weighted`; against McStas with the\n"
+      "real window geometry it fits a BIFROST train to within counting error, where\n"
+      "`'inner'` leaves the tails of the arrival profile 6-18% low.")
       ;
 
 m.attr("MASK_EXCLUDED") = static_cast<int>(CHOPPER_MASK_EXCLUDED);
@@ -883,7 +902,8 @@ nb::class_<Region>(m, "Region",
            },
            "choppers"_a, "groups"_a = std::vector<unsigned>{},
            "What a train leaves of this region, weighted by how likely each neutron is to\n"
-           "get through, as a WeightedRegion; see that class.")
+           "get through, as a WeightedRegion; see that class. Give the choppers the\n"
+           "aperture `beam_aperture(..., at='centre')` returns: that sets the ramp.")
       .def("_coverage", &Region::coverage, "inverse_velocities"_a, "times"_a)
       .def("_arrivals", &Region::arrivals, "signal"_a, "inverse_velocities"_a, "times"_a,
            "distance"_a, "arrival_times"_a, "period"_a)
