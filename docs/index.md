@@ -62,7 +62,9 @@ weights each neutron by how likely it is to get through while a disc's edge is s
 sweeping the beam. See [Weight the region by a source](how-to/weight-by-a-source.md).
 
 **Setting the real choppers.** `chopcal.nicos` gives BIFROST's speeds and experiment
-delays keyed by the NICOS devices that take them. See
+delays keyed by the NICOS devices that take them, in ESS's conventions: speeds positive
+clockwise facing away from the source, and delays that put the centre of each disc's
+reference opening on the beam. See
 [Set the choppers from NICOS](how-to/set-the-choppers-from-nicos.md).
 
 ## What it is not
