@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.26)
 project(chopper-calculations)
 
 set(CMAKE_CXX_STANDARD 20)
-list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_LIST_DIR}/cmake")
 
 # Warn if the user invokes CMake directly
 if (NOT SKBUILD)
@@ -40,8 +39,16 @@ if (NOT SKBUILD)
     list(APPEND CMAKE_PREFIX_PATH "${NB_DIR}")
 endif()
 
-include(fetcher)
-git_fetch(chopper_lib 4.3.0 https://github.com/mcdotstar/mcstas-chopper-lib.git False)
+# An installed chopper-lib -- conda-forge's, say -- if there is one, otherwise the tagged
+# source from GitHub, built static and linked into the extensions so a wheel carries no
+# library of its own.
+include(FetchContent)
+set(BUILD_SHARED_LIBS OFF)
+FetchContent_Declare(chopper_lib
+        GIT_REPOSITORY https://github.com/mcdotstar/mcstas-chopper-lib.git
+        GIT_TAG v4.4.2
+        FIND_PACKAGE_ARGS 4.4.2 CONFIG)
+FetchContent_MakeAvailable(chopper_lib)
 
 # Import nanobind through CMake's find_package mechanism
 find_package(nanobind CONFIG REQUIRED)
@@ -58,34 +65,22 @@ nanobind_add_module(
         # Source code goes here
         src/chopcal.cpp
         src/choppers.cpp
-        ${chopper_lib_SOURCE_DIR}/chopper-lib.c
 )
-target_include_directories(_chopcal_impl PRIVATE ${chopper_lib_SOURCE_DIR})
+target_link_libraries(_chopcal_impl PRIVATE chopper_lib::chopper_lib)
 
 nanobind_add_module(_chopper_lib_impl
         STABLE_ABI
         src/mcstas_chopper_lib.cpp
-        ${chopper_lib_SOURCE_DIR}/chopper-lib.c
 )
-target_include_directories(_chopper_lib_impl PRIVATE ${chopper_lib_SOURCE_DIR})
-
-# chopper-lib.c refuses to compile without V2K, K2V and PI since 4.0.0; it used to define
-# its own behind #ifndef. These are the McStas runtime's values, cached by the library for
-# consumers like this one, which compile the source into a target of their own rather than
-# linking chopper_lib. They are deliberately not chopcal::constants -- those are derived
-# from SI/CODATA, and agreeing with McStas is the point of these.
-#
-# On the source file rather than the targets, because chopcal::constants declares
-# variables named PI, V2K and K2V: as target definitions these macros reach the C++ too
-# and mangle every one of those declarations. Only the C file needs them, and this is the
-# same reason chopper-lib's own CMakeLists keeps them PRIVATE.
-set_source_files_properties(${chopper_lib_SOURCE_DIR}/chopper-lib.c PROPERTIES
-        COMPILE_DEFINITIONS "${CHOPPER_LIB_DEFINITIONS}")
+target_link_libraries(_chopper_lib_impl PRIVATE chopper_lib::chopper_lib)
 
 # The bindings convert between wavelength and inverse velocity, and have to do it with
-# the same numbers the library does or the two disagree in the eighth digit. Same source
-# of truth, re-emitted under prefixed names so the C++ can read them without PI, V2K and
-# K2V colliding with the chopcal::constants variables of those names.
+# the same numbers the library does or the two disagree in the eighth digit. The library
+# was compiled with CHOPPER_LIB_DEFINITIONS -- the McStas runtime's V2K, K2V and PI, set
+# by its package file or left in the cache by FetchContent -- so re-emit them under
+# prefixed names the C++ can read without colliding with the chopcal::constants
+# variables named PI, V2K and K2V. Those are derived from SI/CODATA; agreeing with McStas
+# is the point of these.
 set(CHOPCAL_RUNTIME_DEFINITIONS)
 foreach (definition IN LISTS CHOPPER_LIB_DEFINITIONS)
     if (definition MATCHES "^([A-Za-z0-9_]+)=(.*)$")

@@ -282,8 +282,10 @@ you an array to plot.
 
 ## Developing
 
-The build fetches `chopper-lib` from GitHub. To build against a local checkout instead —
-which you need when changing both together — point `FetchContent` at it:
+The build uses an installed `chopper-lib` if CMake can find one (conda-forge's, say)
+and otherwise fetches its tagged source from GitHub and links it statically. To build
+against a local checkout instead — which you need when changing both together — point
+`FetchContent` at it:
 
 ```bash
 pip install --no-build-isolation -ve . \
@@ -291,8 +293,7 @@ pip install --no-build-isolation -ve . \
 pytest test
 ```
 
-Nothing else changes: the same sources are compiled into the extension modules, so a
-modification to `chopper-lib.c` shows up in `chopcal` on the next build. `chopper-lib`
+A modification to `chopper-lib.c` shows up in `chopcal` on the next build. `chopper-lib`
 carries a `CHOPPER_LIB_VERSION` macro and `src/chopper.h` asserts on it, so building
 against a version that means something else by a chopper's fields fails rather than
 returning different numbers. `chopcal` needs **4.2.1 or newer** — 4.2.0 has the polygons
